@@ -17,6 +17,10 @@ async def refine_pose(request: KeypointRequest):
     if frame_count == 0:
         raise HTTPException(status_code=400, detail="No frames provided")
     
+    # Log received keypoints
+    people_count = len(request.keypoints[0]) if request.keypoints else 0
+    print(f"📥 Received keypoints: {request.name} | {frame_count} frame(s) | {people_count} person(s)")
+    
     # TODO: Add diffusion model refinement here
     
     return {
