@@ -1,5 +1,21 @@
 # dancesage-api
 
+FastAPI service for receiving DanceSage keypoint sequences. Pose refinement,
+move classification, and coaching analysis are not implemented yet; unfinished
+analysis endpoints return HTTP 501 rather than placeholder results.
+
+## Run locally
+
+```bash
+conda activate dance_sage
+pip install -r requirements-dev.txt
+uvicorn api.main:app --reload
+pytest
+```
+
+The health endpoint is `GET /health`, and the iOS ingestion endpoint is
+`POST /api/refine-pose`.
+
 ```
 dancesage-api/
 ├── .github/
