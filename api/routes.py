@@ -1,9 +1,20 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from typing import List
 import math
 
+from api.event_search import EventSearchRequest, EventSearchResponse, EventSearchService, get_event_search_service
+
 router = APIRouter()
+
+
+@router.post("/events/search", response_model=EventSearchResponse)
+async def search_events(
+    request: EventSearchRequest,
+    service: EventSearchService = Depends(get_event_search_service),
+):
+    """Find date-specific Latin dance events and return only source-backed results."""
+    return await service.search(request)
 
 # Request model for keypoints
 class KeypointRequest(BaseModel):

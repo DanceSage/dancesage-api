@@ -3,9 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router
 
 app = FastAPI(
-    title="DanceSage Pose Detection API",
-    description="YOLO-based pose detection for dance analysis",
-    version="1.0.0"
+    title="DanceSage API",
+    description="Dance event discovery and pose ingestion for the DanceSage iPhone app",
+    version="1.1.0"
 )
 
 app.add_middleware(
