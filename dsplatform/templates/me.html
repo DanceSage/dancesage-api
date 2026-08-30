@@ -22,15 +22,10 @@
 shows only what is marked public.</p>
 
 <div class="share-box">
-  <h2>Who can see your shared videos</h2>
-  <p class="sub" style="margin-bottom:14px">Anyone you add here sees every video you mark
-  <b>Shared</b>. Remove them and it stops working — nothing was ever handed over.</p>
-  <div class="share-add">
-    <span class="at">@</span><input id="gh" placeholder="their handle"
-      autocapitalize="none" autocorrect="off">
-    <button id="gadd">Add</button>
-  </div>
-  <div id="gerr" class="gerr"></div>
+  <h2>Who can see what</h2>
+  <p class="sub" style="margin-bottom:12px">Access is per video. Use
+  <b>Share this one</b> under a clip to give someone that clip — they see it and
+  nothing else.</p>
   <ul id="glist" class="glist"></ul>
 </div>
 <div class="grid">
@@ -89,13 +84,6 @@ shows only what is marked public.</p>
   .share-box{border:1px solid var(--line);background:var(--panel);border-radius:16px;
     padding:20px 22px;margin:0 0 30px}
   .share-box h2{font-size:1.05rem;margin:0 0 6px}
-  .share-add{display:flex;gap:9px;align-items:center;max-width:380px}
-  .share-add .at{color:var(--faint)}
-  .share-add input{flex:1;background:var(--panel2);border:1px solid var(--line);
-    color:var(--text);padding:9px 12px;border-radius:9px;font-size:.92rem;min-width:0}
-  .share-add button{background:var(--gold);border:none;color:#241a06;
-    font:600 .85rem var(--font-body);padding:9px 18px;border-radius:9px;cursor:pointer}
-  .gerr{color:var(--rose);font-size:.82rem;min-height:1.1em;margin-top:7px}
   .glist{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px;max-width:420px}
   .glist li{display:flex;align-items:center;gap:11px;background:var(--panel2);
     border:1px solid var(--line);border-radius:12px;padding:9px 13px}
@@ -175,7 +163,7 @@ document.querySelectorAll('[data-share]').forEach(box => {
 });
 
 // ── grants: the web half of the phone's Sharing screen ──────────────────────
-const glist = document.getElementById('glist'), gerr = document.getElementById('gerr');
+const glist = document.getElementById('glist');
 async function loadGrants() {
   const r = await fetch('/v1/grants');
   if (!r.ok) return;
@@ -196,18 +184,5 @@ async function loadGrants() {
     glist.appendChild(li);
   }
 }
-document.getElementById('gadd').onclick = async () => {
-  gerr.textContent = '';
-  const h = document.getElementById('gh').value.trim().replace(/^@/, '');
-  if (!h) return;
-  const r = await fetch('/v1/grants', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ handle: h })
-  });
-  if (r.ok) { document.getElementById('gh').value = ''; loadGrants(); }
-  else gerr.textContent = (await r.json()).detail || 'Could not add them.';
-};
-document.getElementById('gh').addEventListener('keydown',
-  e => { if (e.key === 'Enter') document.getElementById('gadd').click(); });
 loadGrants();
 </script>{% endblock %}

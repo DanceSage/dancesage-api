@@ -204,16 +204,16 @@ def _owner_of(db: Session, *, pose: str = "", video: str = "") -> Video | None:
 
 def _has_grant(db: Session, owner_id: int, viewer_id: int,
                video_id: int | None = None) -> bool:
-    """An active grant covering this video. Revoked grants are not grants.
+    """An active grant for this exact video. Revoked grants are not grants.
 
-    A grant with no video covers everything the owner marked shared; one naming a
-    video covers only that. Asking about a specific video accepts either.
+    Access is always per clip. There is no way to hand someone everything at
+    once — sharing one video is a decision about that video, and a viewer sees
+    it and nothing else.
     """
     q = select(Grant).where(Grant.owner_id == owner_id,
                             Grant.viewer_id == viewer_id,
-                            Grant.revoked_at.is_(None))
-    if video_id is not None:
-        q = q.where((Grant.video_id.is_(None)) | (Grant.video_id == video_id))
+                            Grant.revoked_at.is_(None),
+                            Grant.video_id == video_id)
     return db.execute(q).scalars().first() is not None
 
 
@@ -481,8 +481,7 @@ def shared_with_me(me: User = Depends(current_user), db: Session = Depends(get_d
     out = []
     for g in grants:
         vids = [v for v in g.owner.videos
-                if v.visibility == "granted"
-                and (g.video_id is None or g.video_id == v.id)]
+                if v.visibility == "granted" and g.video_id == v.id]
         if vids:
             out.append({"handle": g.owner.handle,
                         "display_name": g.owner.display_name,
@@ -569,7 +568,7 @@ def list_grants(u: User = Depends(current_user), db: Session = Depends(get_db)):
                         "avatar": f"/avatar/{g.viewer.handle}.jpg" if g.viewer.avatar_key else "",
                         "since": g.created_at.isoformat(),
                         "video_id": g.video_id,
-                        "scope": g.video.title if g.video else "Everything I share"}
+                        "scope": g.video.title if g.video else "(video deleted)"}
                        for g in rows]}
 
 
@@ -587,25 +586,24 @@ def add_grant(payload: dict, u: User = Depends(current_user),
         raise HTTPException(400, "You can already see your own videos")
 
     video_id = payload.get("video_id")
-    if video_id is not None:
-        v = db.get(Video, int(video_id))
-        if not v or v.user_id != u.id:
-            raise HTTPException(404, "No such video")
-        # Sharing a clip is what makes it shared; asking twice would be a trap.
-        if v.visibility == "private":
-            v.visibility = "granted"
+    if video_id is None:
+        raise HTTPException(400, "video_id required — access is granted per video")
+    v = db.get(Video, int(video_id))
+    if not v or v.user_id != u.id:
+        raise HTTPException(404, "No such video")
+    # Sharing a clip is what makes it shared; asking twice would be a trap.
+    if v.visibility == "private":
+        v.visibility = "granted"
 
     existing = db.execute(select(Grant).where(
         Grant.owner_id == u.id, Grant.viewer_id == viewer.id,
-        Grant.video_id.is_(None) if video_id is None
-        else Grant.video_id == int(video_id))).scalars().first()
+        Grant.video_id == int(video_id))).scalars().first()
     if existing:
         # Re-granting someone you revoked reuses the row rather than piling up history.
         existing.revoked_at = None
         g = existing
     else:
-        g = Grant(owner_id=u.id, viewer_id=viewer.id,
-                  video_id=int(video_id) if video_id is not None else None)
+        g = Grant(owner_id=u.id, viewer_id=viewer.id, video_id=int(video_id))
         db.add(g)
     db.commit(); db.refresh(g)
     return {"id": g.id, "handle": viewer.handle, "display_name": viewer.display_name,
