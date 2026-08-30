@@ -11,7 +11,7 @@ from fastapi.responses import (HTMLResponse, JSONResponse, FileResponse,
                                RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 
 from .db import get_db, Base, engine, SessionLocal
@@ -416,6 +416,71 @@ def shared_with_me(me: User = Depends(current_user), db: Session = Depends(get_d
                         "videos": [_card(v) for v in
                                    sorted(vids, key=lambda v: v.created_at, reverse=True)]})
     return {"from": out}
+
+
+# ── deletion ───────────────────────────────────────────────────────────────
+
+def _erase_video(st, db: Session, v: Video) -> None:
+    """Remove a post and everything it points at.
+
+    Storage first, then the row. The other order can strand objects nothing
+    refers to any more, and an orphan in a bucket is a file nobody will ever
+    find to delete.
+    """
+    for key in (v.pose_key, v.pose2d_key):
+        if key:
+            try:
+                st.delete(pose=key)
+            except Exception:
+                pass          # already gone, or a bad key; the row still goes
+    if v.video_key:
+        try:
+            st.delete(video=v.video_key)
+        except Exception:
+            pass
+    db.execute(delete(Grant).where(Grant.video_id == v.id))
+    db.delete(v)
+
+
+@app.delete("/v1/videos/{video_id}")
+def delete_video(video_id: int, u: User = Depends(current_user),
+                 db: Session = Depends(get_db)):
+    """Delete one post. Promised in the privacy policy, so it has to be real."""
+    v = db.get(Video, video_id)
+    if not v or v.user_id != u.id:
+        raise HTTPException(404, "No such video")
+    _erase_video(get_storage(), db, v)
+    db.commit()
+    return {"ok": True, "deleted": video_id}
+
+
+@app.delete("/v1/me")
+def delete_account(u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Delete the account and everything in it.
+
+    Apple requires this of any app that creates accounts, and the privacy policy
+    promises it. It removes the profile, every post, the media behind them, and
+    every grant in both directions.
+
+    What it cannot remove is the Firebase identity — the server never holds a
+    credential for it. The app deletes that itself, with a token it gets by asking
+    for the password again, so the two halves go together.
+    """
+    st = get_storage()
+    n = len(u.videos)
+    for v in list(u.videos):
+        _erase_video(st, db, v)
+    if u.avatar_key:
+        try:
+            st.delete(avatar=u.avatar_key)
+        except Exception:
+            pass
+    # Grants both ways: what they gave out, and what was given to them.
+    db.execute(delete(Grant).where((Grant.owner_id == u.id) | (Grant.viewer_id == u.id)))
+    handle = u.handle
+    db.delete(u)
+    db.commit()
+    return {"ok": True, "handle": handle, "videos_deleted": n}
 
 
 # ── who you have let in ────────────────────────────────────────────────────

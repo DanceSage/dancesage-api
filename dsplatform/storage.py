@@ -68,6 +68,10 @@ class Storage(ABC):
     def put_avatar(self, key: str, data: bytes) -> str: ...
     @abstractmethod
     def avatar_bytes(self, key: str) -> bytes: ...
+    @abstractmethod
+    def delete(self, *, pose: str = "", video: str = "", avatar: str = "") -> None:
+        """Remove an object. Missing is not an error — deletion must be safe to
+        retry, and a half-finished delete must be finishable."""
 
 
 class LocalStorage(Storage):
@@ -118,6 +122,13 @@ class LocalStorage(Storage):
         if not p.exists():
             raise FileNotFoundError(key)
         return p.read_bytes()
+
+    def delete(self, *, pose: str = "", video: str = "", avatar: str = "") -> None:
+        for path in (self._path(pose) if pose else None,
+                     self.video_path(video) if video else None,
+                     (self.root / "avatar" / f"{avatar}.jpg") if avatar else None):
+            if path is not None:
+                path.unlink(missing_ok=True)
 
 
 class R2Storage(Storage):
@@ -187,6 +198,18 @@ class R2Storage(Storage):
 
     def avatar_bytes(self, key: str) -> bytes:
         return self._get(f"avatar/{key}.jpg")
+
+    def delete(self, *, pose: str = "", video: str = "", avatar: str = "") -> None:
+        keys = []
+        if pose:
+            keys.append(f"pose/{pose}.json")
+        if video:
+            keys.append(f"video/{video}.mov")
+        if avatar:
+            keys.append(f"avatar/{avatar}.jpg")
+        for k in keys:
+            # R2 returns success for a key that is already gone, which is what we want.
+            self.s3.delete_object(Bucket=self.bucket, Key=k)
 
     def _url(self, key: str) -> str:
         if self.public_base:
