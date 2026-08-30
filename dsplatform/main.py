@@ -424,7 +424,11 @@ def update_me(payload: dict, u: User = Depends(current_user),
 # ── the web session ────────────────────────────────────────────────────────
 
 @app.get("/signin", response_class=HTMLResponse)
-def signin_page(request: Request):
+def signin_page(request: Request, u: User | None = Depends(optional_user)):
+    # Already signed in? The form would only be confusing — the nav is showing
+    # your face while the page asks who you are. Go where you were headed.
+    if u:
+        return RedirectResponse("/me", status_code=303)
     return templates.TemplateResponse(request, "signin.html", {})
 
 
