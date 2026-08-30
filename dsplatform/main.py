@@ -348,7 +348,13 @@ def sign_in(payload: dict, db: Session = Depends(get_db)):
                          "me": {"handle": u.handle, "display_name": u.display_name}})
     # the app uses the Bearer token; a browser gets a cookie so server-rendered
     # pages know who is asking without any JavaScript
-    resp.set_cookie(COOKIE, tok, httponly=True, samesite="lax",
+    resp.set_cookie(COOKIE, tok, httponly=True, secure=True, samesite="lax",
+                    max_age=180 * 86400, path="/")
+    # A readable companion carrying no credential. The pages on Pages are static
+    # files with their nav baked in at build time, so they cannot know you are
+    # signed in — this lets a few lines of script on them say "Your videos"
+    # instead of inviting you to sign in again.
+    resp.set_cookie("ds_in", "1", httponly=False, secure=True, samesite="lax",
                     max_age=180 * 86400, path="/")
     return resp
 
@@ -403,6 +409,7 @@ def signin_page(request: Request):
 def signout():
     resp = RedirectResponse("/", status_code=303)
     resp.delete_cookie(COOKIE, path="/")
+    resp.delete_cookie("ds_in", path="/")
     return resp
 
 
