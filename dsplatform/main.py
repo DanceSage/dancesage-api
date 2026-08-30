@@ -3,7 +3,7 @@
 Phone records and uploads. The web only reads. No browser upload path exists by
 design, and no video enters without a pose track: the skeleton is the platform rule.
 """
-import json, os, random, pathlib
+import asyncio, gzip, json, os, random, pathlib
 import jwt, time
 import datetime as dt
 from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, Form
@@ -22,6 +22,40 @@ from .auth import (verify_provider_token, issue_session, current_user,
 
 HERE = pathlib.Path(__file__).parent
 app = FastAPI(title="Dance Sage")
+
+BACKUP_HOURS = float(os.environ.get("BACKUP_EVERY_HOURS", "12"))
+
+
+@app.on_event("startup")
+async def _schedule_backups():
+    """Back the database up to R2, on a loop, for as long as the server runs.
+
+    The database is the only thing here that cannot be rebuilt: R2 holds the pose
+    tracks and the video, but nothing there records who owns them. Lose the volume
+    without this and you keep a bucket of anonymous files.
+
+    In the app rather than a separate scheduled machine because there is one
+    machine, and a backup that depends on a second thing running is a backup with
+    two ways to silently stop.
+    """
+    if os.environ.get("STORAGE_BACKEND", "local").lower() != "r2":
+        return                      # nowhere durable to put them
+
+    async def loop():
+        while True:
+            try:
+                await asyncio.to_thread(_take_backup)
+            except Exception as e:
+                # A failed backup must never take the server down with it.
+                print(f"backup failed: {e}", flush=True)
+            await asyncio.sleep(BACKUP_HOURS * 3600)
+
+    asyncio.create_task(loop())
+
+
+def _take_backup():
+    from .backup import take
+    take()
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 def _nav_user(request: Request) -> dict:
     """Puts `me` in front of every template so the shared header can decide
@@ -118,7 +152,7 @@ def video(video_id: int, request: Request, me: User | None = Depends(optional_us
 
 
 @app.get("/pose/{key:path}.json")
-def pose(key: str, u: User | None = Depends(optional_user),
+def pose(key: str, request: Request, u: User | None = Depends(optional_user),
          db: Session = Depends(get_db)):
     """In the cloud this becomes a short-lived signed URL checked against grants.
 
@@ -133,7 +167,12 @@ def pose(key: str, u: User | None = Depends(optional_user),
         raise HTTPException(404, "No pose track")
     headers = {"Cache-Control": "private, max-age=3600"}
     if gzipped:
-        headers["Content-Encoding"] = "gzip"
+        # Every real client accepts gzip, but announcing an encoding the caller
+        # did not ask for hands them bytes they cannot read.
+        if "gzip" in request.headers.get("accept-encoding", "").lower():
+            headers["Content-Encoding"] = "gzip"
+        else:
+            blob = gzip.decompress(blob)
     return Response(blob, media_type="application/json", headers=headers)
 
 
