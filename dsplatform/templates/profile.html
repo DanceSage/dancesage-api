@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ u.display_name }} · Dance Sage{% endblock %}
+{% block body %}
+<div class="who">
+  {% if u.avatar_key %}
+  <img class="av" src="/avatar/{{ u.handle }}.jpg" alt="{{ u.display_name }}">
+  {% else %}
+  <div class="av ph">{{ u.display_name[0] }}</div>
+  {% endif %}
+  <div class="info">
+    <h1>{{ u.display_name }}</h1>
+    <div class="loc">@{{ u.handle }} &middot; {{ u.city }}</div>
+    <div>
+      {% for s in u.style_list %}<span class="chip">{{ s }}</span>{% endfor %}
+      <span class="chip">{{ u.levels }}</span>
+    </div>
+    <div class="stats">
+      <div><b>{{ videos|length }}</b><span>videos</span></div>
+      <div><b>{{ (videos|sum(attribute='frames') / 30 / 60)|round(1) }}</b><span>minutes</span></div>
+      <div><b>{{ videos|selectattr('dancers','gt',1)|list|length }}</b><span>partner</span></div>
+    </div>
+    <p class="sub" style="margin:0 0 12px">{{ u.bio }}</p>
+    <button class="chip on" style="border:none;cursor:pointer;font-family:var(--mono)"
+      onclick="navigator.clipboard.writeText(location.href);this.textContent='Link copied'">
+      Share profile</button>
+  </div>
+</div>
+<div class="grid">
+  {% for v in videos %}
+  <a class="card" href="/v/{{ v.id }}">
+    <canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas>
+    <div class="meta">
+      <div class="t">{{ v.title }}</div>
+      <div class="s">{{ v.level }} &middot; {{ v.seconds }}s{% if v.has_video %} &middot; video{% endif %}{% if v.dancers > 1 %} &middot; partner{% endif %}</div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% if not videos %}<p class="sub">Nothing published yet.</p>{% endif %}
+{% endblock %}
+{% block js %}<script>
+document.querySelectorAll('canvas[data-pose]').forEach(c=>{ new Skeleton(c,{yaw:0.3}).load(c.dataset.pose); });
+</script>{% endblock %}

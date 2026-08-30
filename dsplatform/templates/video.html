@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}{{ v.title }} · {{ u.display_name }}{% endblock %}
+{% block body %}
+<style>
+  .player{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+  .player canvas{width:100%;aspect-ratio:4/3;display:block;background:var(--panel2);
+    border-radius:11px;cursor:grab}
+  .player canvas.drag{cursor:grabbing}
+  .ctl{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
+  .ctl button{background:var(--gold);border:none;color:#241a06;font:600 .86rem system-ui;
+    padding:8px 16px;border-radius:9px;cursor:pointer;min-width:76px}
+  .ctl input[type=range]{accent-color:var(--gold)}
+  #scrub{flex:1;min-width:120px}
+  .fno{font-family:var(--mono);font-size:.8rem;color:var(--muted);min-width:74px}
+  .lbl{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;
+    display:flex;align-items:center;gap:7px;white-space:nowrap}
+  .two{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:20px;align-items:start}
+  @media(max-width:860px){.two{grid-template-columns:1fr}}
+</style>
+<div class="two">
+  <div class="player">
+    <div id="stage" style="position:relative;border-radius:11px;overflow:hidden;background:var(--panel2)">
+      {% if v.has_video %}
+      <video id="vid" src="/video/{{ v.video_key }}.mov" playsinline muted loop
+             style="width:100%;display:block"></video>
+      {% endif %}
+      <canvas id="cv" style="{% if v.has_video %}position:absolute;inset:0;width:100%;height:100%{% endif %}"></canvas>
+    </div>
+    {% if v.has_video %}
+    <div class="ctl" style="margin-top:10px">
+      <span class="lbl">Show</span>
+      <button class="mode" data-mode="both" style="min-width:0;padding:6px 12px">Both</button>
+      <button class="mode" data-mode="video" style="min-width:0;padding:6px 12px">Video</button>
+      <button class="mode" data-mode="skel" style="min-width:0;padding:6px 12px">Skeleton</button>
+    </div>
+    {% endif %}
+    <div class="ctl">
+      <button id="play">Pause</button>
+      <input id="scrub" type="range" min="0" value="0">
+      <span class="fno" id="fno">0</span>
+      <label class="lbl">Turn <input id="yaw" type="range" min="-180" max="180" value="17" style="width:92px"></label>
+      <label class="lbl">Speed <input id="spd" type="range" min="0.25" max="1.5" step="0.25" value="1" style="width:74px"></label>
+    </div>
+  </div>
+  <div>
+    <h1 style="font-size:1.35rem">{{ v.title }}</h1>
+    <div style="color:var(--muted);font-size:.9rem;margin-bottom:12px">
+      <a href="/@{{ u.handle }}" style="color:var(--teal)">{{ u.display_name }}</a>
+      &middot; {{ u.city }}</div>
+    <div style="margin-bottom:14px">
+      <span class="chip">{{ v.style }}</span><span class="chip">{{ v.level }}</span>
+      <span class="chip">{{ v.seconds }}s</span>
+      {% if v.dancers > 1 %}<span class="chip">partner</span>{% endif %}
+    </div>
+    <p class="sub" style="font-size:.94rem">{{ v.note }}</p>
+    <button class="chip on" style="border:none;cursor:pointer;font-family:var(--mono)"
+      onclick="navigator.clipboard.writeText(location.href);this.textContent='Link copied'">
+      Share this video</button>
+    {% if more %}
+    <div style="margin-top:26px">
+      <div class="lbl" style="margin-bottom:10px">More from {{ u.display_name }}</div>
+      {% for m in more %}
+      <a href="/v/{{ m.id }}" style="display:block;color:var(--muted);font-size:.88rem;
+        padding:7px 0;border-bottom:1px solid var(--line)">{{ m.title }}</a>
+      {% endfor %}
+    </div>{% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block js %}<script>
+const HASVID = {{ 'true' if v.has_video else 'false' }};
+const POSE2D = "{{ v.pose2d_key }}";
+const sk = new Skeleton(document.getElementById('cv'), {yaw: 17*Math.PI/180});
+sk.onframe = (f,n) => { document.getElementById('fno').textContent = f+' / '+n;
+                        document.getElementById('scrub').value = f; };
+// with video present the 2D track is what lines up with the pixels
+const POSE_URL = (HASVID && POSE2D) ? '/pose/' + POSE2D + '.json' : '/pose/{{ v.pose_key }}.json';
+sk.load(POSE_URL).then(d => {
+  document.getElementById('scrub').max = d.frames - 1;
+  const base = d.fps;
+  document.getElementById('spd').oninput = e => d.fps = base * (+e.target.value);
+});
+document.getElementById('play').onclick = e => {
+  if (sk.playing) { sk.pause(); e.target.textContent = 'Play'; }
+  else { sk.play(); e.target.textContent = 'Pause'; }
+};
+document.getElementById('scrub').oninput = e => {
+  sk.pause(); document.getElementById('play').textContent = 'Play'; sk.seek(+e.target.value);
+};
+document.getElementById('yaw').oninput = e => { sk.yaw = (+e.target.value)*Math.PI/180; sk.draw(); };
+if (HASVID) {
+  const vid = document.getElementById('vid');
+  const buttons = document.querySelectorAll('button.mode');
+  let mode = 'both';
+  function apply() {
+    vid.style.visibility  = (mode === 'skel')  ? 'hidden' : 'visible';
+    sk.c.style.visibility = (mode === 'video') ? 'hidden' : 'visible';
+    sk.c.style.background = (mode === 'skel')  ? 'var(--panel2)' : 'transparent';
+    buttons.forEach(b => b.style.opacity = (b.dataset.mode === mode) ? 1 : 0.45);
+  }
+  buttons.forEach(b => b.onclick = () => { mode = b.dataset.mode; apply(); });
+  // the video is the clock when it is present, so the skeleton cannot drift off it
+  vid.play().catch(() => {});
+  vid.addEventListener('timeupdate', () => {
+    if (!sk.data) return;
+    sk.f = Math.min(sk.data.frames - 1, vid.currentTime * sk.data.fps);
+    sk.draw();
+  });
+  sk.pause();
+  document.getElementById('play').onclick = e => {
+    if (vid.paused) { vid.play(); e.target.textContent = 'Pause'; }
+    else { vid.pause(); e.target.textContent = 'Play'; }
+  };
+  document.getElementById('scrub').oninput = e => {
+    vid.pause(); document.getElementById('play').textContent = 'Play';
+    vid.currentTime = (+e.target.value) / sk.data.fps;
+  };
+  apply();
+}
+{
+  const c = document.getElementById('cv'); let drag=false, px=0;
+  c.addEventListener('pointerdown', e => {drag=true; px=e.clientX; c.setPointerCapture(e.pointerId); c.classList.add('drag');});
+  c.addEventListener('pointermove', e => {if(!drag)return; sk.yaw += (e.clientX-px)*0.01; px=e.clientX;
+    document.getElementById('yaw').value = Math.round(((sk.yaw*180/Math.PI+180)%360+360)%360-180); sk.draw();});
+  const end=()=>{drag=false;c.classList.remove('drag');};
+  c.addEventListener('pointerup',end); c.addEventListener('pointercancel',end);
+}
+</script>{% endblock %}

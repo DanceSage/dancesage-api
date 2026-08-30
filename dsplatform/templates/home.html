@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Find a dance teacher by how they move.</h1>
+<p class="sub">Not by who has the biggest ad budget or posts the most. Every teacher
+here is a dancer you can watch before you decide.</p>
+<div class="grid">
+  {% for c in cities %}
+  <a class="card" href="/city/{{ c|lower }}"><div class="meta">
+    <div class="t">{{ c }}</div><div class="s">Teachers &rarr;</div></div></a>
+  {% endfor %}
+</div>
+{% endblock %}

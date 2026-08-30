@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Dance Sage{% endblock %}
+{% block body %}
+<div style="max-width:380px;margin:40px auto">
+  <h1 style="font-size:1.5rem">Sign in</h1>
+  <p class="sub">To see everything you have posted — including what is still private.</p>
+  <form id="f" style="display:flex;flex-direction:column;gap:11px;margin-top:22px">
+    <input id="email" type="email" placeholder="Email" autocomplete="email" required>
+    <input id="pw" type="password" placeholder="Password" autocomplete="current-password" required>
+    <button type="submit" id="go">Sign in</button>
+    <div id="err" style="color:#ff8fa3;font-size:.86rem;min-height:1.2em"></div>
+  </form>
+  <p class="sub" style="font-size:.84rem;margin-top:18px">
+    Apple and Google sign-in land here too once they are switched on — same account either way.</p>
+</div>
+<style>
+  #f input{background:var(--panel);border:1px solid var(--line);color:var(--text);
+    padding:11px 13px;border-radius:9px;font-size:.95rem}
+  #f input:focus{outline:2px solid var(--gold);outline-offset:1px}
+  #f button{background:var(--gold);border:none;color:#241a06;font:600 .92rem system-ui;
+    padding:11px;border-radius:9px;cursor:pointer}
+  #f button[disabled]{opacity:.6;cursor:default}
+</style>
+{% endblock %}
+{% block js %}
+<script src="/static/firebase-config.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const auth = getAuth(initializeApp(window.FIREBASE_CONFIG));
+const err = document.getElementById('err');
+document.getElementById('f').onsubmit = async e => {
+  e.preventDefault();
+  const btn = document.getElementById('go');
+  btn.disabled = true; btn.textContent = 'Signing in…'; err.textContent = '';
+  try {
+    const cred = await signInWithEmailAndPassword(
+      auth, document.getElementById('email').value, document.getElementById('pw').value);
+    const idToken = await cred.user.getIdToken();
+    const r = await fetch('/v1/auth/signin', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ idToken })
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || 'Sign-in failed');
+    location.href = '/me';
+  } catch (ex) {
+    err.textContent = (ex.code === 'auth/invalid-credential')
+      ? 'Wrong email or password.' : (ex.message || String(ex));
+    btn.disabled = false; btn.textContent = 'Sign in';
+  }
+};
+</script>
+{% endblock %}

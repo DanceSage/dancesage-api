@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Dance teachers in {{ city }} · Dance Sage{% endblock %}
+{% block body %}
+<h1>Dance teachers in {{ city }}</h1>
+<p class="sub">Watch how they move, then decide. The order rotates every visit —
+nothing here is ranked by followers.</p>
+<div style="margin-bottom:22px">
+  <a class="chip {% if not style %}on{% endif %}" href="/city/{{ city|lower }}">All styles</a>
+  {% for s in styles %}
+  <a class="chip {% if style==s %}on{% endif %}" href="/city/{{ city|lower }}?style={{ s }}">{{ s }}</a>
+  {% endfor %}
+</div>
+<div class="grid">
+  {% for c in cards %}
+  <a class="card" href="/@{{ c.teacher.handle }}">
+    <canvas data-pose="/pose/{{ c.video.pose_key }}.json"></canvas>
+    <div class="meta">
+      <div class="t">{{ c.teacher.display_name }}</div>
+      <div class="s">{{ c.teacher.styles }}</div>
+      <div class="s">{{ c.teacher.levels }} &middot; {{ c.count }} video{{ '' if c.count==1 else 's' }}</div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% if not cards %}<p class="sub">No teachers here yet.</p>{% endif %}
+{% endblock %}
+{% block js %}<script>
+document.querySelectorAll('canvas[data-pose]').forEach(c=>{
+  new Skeleton(c,{yaw:0.3}).load(c.dataset.pose);
+});
+</script>{% endblock %}

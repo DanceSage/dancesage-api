@@ -1,0 +1,511 @@
+"""Dance Sage platform — profiles and the city directory.
+
+Phone records and uploads. The web only reads. No browser upload path exists by
+design, and no video enters without a pose track: the skeleton is the platform rule.
+"""
+import json, os, random, pathlib
+import jwt, time
+import datetime as dt
+from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, Form
+from fastapi.responses import (HTMLResponse, JSONResponse, FileResponse,
+                               RedirectResponse, Response)
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from .db import get_db, Base, engine
+from .models import User, Video, Grant
+from .storage import get_storage, LocalStorage
+from .auth import (verify_provider_token, issue_session, current_user,
+                    optional_user, COOKIE, SECRET)
+
+HERE = pathlib.Path(__file__).parent
+app = FastAPI(title="Dance Sage")
+app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
+templates = Jinja2Templates(directory=str(HERE / "templates"))
+Base.metadata.create_all(engine)
+
+
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request, db: Session = Depends(get_db)):
+    cities = db.execute(
+        select(User.city).where(User.takes_students == 1).distinct()
+    ).scalars().all()
+    return templates.TemplateResponse(request, "home.html",
+                                      {"cities": [c for c in cities if c]})
+
+
+@app.get("/city/{city}", response_class=HTMLResponse)
+def city(city: str, request: Request, style: str = "", level: str = "",
+         db: Session = Depends(get_db)):
+    q = select(User).where(User.takes_students == 1, User.city.ilike(city))
+    teachers = list(db.execute(q).scalars().all())
+    if style:
+        teachers = [t for t in teachers if style.lower() in t.styles.lower()]
+    if level:
+        teachers = [t for t in teachers if level.lower() in t.levels.lower()]
+    # Rotate rather than rank. Sorting by popularity is the function that makes
+    # good unknown teachers invisible, which is the reason this exists.
+    random.shuffle(teachers)
+    cards = []
+    for t in teachers:
+        vids = sorted(t.videos, key=lambda v: v.created_at, reverse=True)
+        if vids:
+            cards.append({"teacher": t, "video": vids[0], "count": len(vids)})
+    styles = sorted({s for t in teachers for s in t.style_list})
+    return templates.TemplateResponse(request, "city.html", {
+        "city": city.title(), "cards": cards,
+        "styles": styles, "style": style, "level": level,
+    })
+
+
+@app.get("/@{handle}", response_class=HTMLResponse)
+def profile(handle: str, request: Request, me: User | None = Depends(optional_user),
+            db: Session = Depends(get_db)):
+    """One page, three versions of itself depending on who is reading it."""
+    u = db.execute(select(User).where(User.handle == handle)).scalar_one_or_none()
+    if not u:
+        raise HTTPException(404, "No such profile")
+    vids = sorted([v for v in u.videos if _may_view(v, me, db)],
+                  key=lambda v: v.created_at, reverse=True)
+    shared = bool(me) and me.id != u.id and _has_grant(db, u.id, me.id)
+    return templates.TemplateResponse(request, "profile.html",
+                                      {"u": u, "videos": vids,
+                                       "is_owner": bool(me) and me.id == u.id,
+                                       "has_access": shared})
+
+
+@app.get("/v/{video_id}", response_class=HTMLResponse)
+def video(video_id: int, request: Request, me: User | None = Depends(optional_user),
+          db: Session = Depends(get_db)):
+    v = db.get(Video, video_id)
+    if not _may_view(v, me, db):
+        raise HTTPException(404, "No such video")
+    more = [x for x in v.user.videos
+            if x.id != v.id and _may_view(x, me, db)][:6]
+    return templates.TemplateResponse(request, "video.html",
+                                      {"v": v, "u": v.user, "more": more})
+
+
+@app.get("/pose/{key:path}.json")
+def pose(key: str, u: User | None = Depends(optional_user),
+         db: Session = Depends(get_db)):
+    """In the cloud this becomes a short-lived signed URL checked against grants.
+
+    Served still gzipped — every client decompresses transparently, so the tenfold
+    size win applies on the wire and not just on disk.
+    """
+    if not _may_view(_owner_of(db, pose=key), u, db):
+        raise HTTPException(404, "No pose track")
+    try:
+        blob, gzipped = get_storage().pose_blob(key)
+    except FileNotFoundError:
+        raise HTTPException(404, "No pose track")
+    headers = {"Cache-Control": "private, max-age=3600"}
+    if gzipped:
+        headers["Content-Encoding"] = "gzip"
+    return Response(blob, media_type="application/json", headers=headers)
+
+
+# ── who may see what ───────────────────────────────────────────────────────
+
+def _owner_of(db: Session, *, pose: str = "", video: str = "") -> Video | None:
+    """The post a stored object belongs to. Unknown objects have no owner."""
+    if pose:
+        return db.execute(select(Video).where(
+            (Video.pose_key == pose) | (Video.pose2d_key == pose))).scalars().first()
+    return db.execute(select(Video).where(Video.video_key == video)).scalars().first()
+
+
+def _has_grant(db: Session, owner_id: int, viewer_id: int,
+               video_id: int | None = None) -> bool:
+    """An active grant covering this video. Revoked grants are not grants.
+
+    A grant with no video covers everything the owner marked shared; one naming a
+    video covers only that. Asking about a specific video accepts either.
+    """
+    q = select(Grant).where(Grant.owner_id == owner_id,
+                            Grant.viewer_id == viewer_id,
+                            Grant.revoked_at.is_(None))
+    if video_id is not None:
+        q = q.where((Grant.video_id.is_(None)) | (Grant.video_id == video_id))
+    return db.execute(q).scalars().first() is not None
+
+
+def _may_view(v: Video | None, u: User | None, db: Session | None = None) -> bool:
+    """Public is public, private is the owner's alone, shared needs a grant.
+
+    An unknown key is refused rather than served. Guessing a filename must not be
+    a way in, which is the whole reason this function exists.
+    """
+    if v is None:
+        return False
+    if v.visibility == "public":
+        return True
+    if u is None:
+        return False
+    if v.user_id == u.id:
+        return True
+    return (v.visibility == "granted" and db is not None
+            and _has_grant(db, v.user_id, u.id, v.id))
+
+
+PLAYBACK_TTL = 3600
+
+
+def _playback_token(key: str, expires: int) -> str:
+    return jwt.encode({"k": key, "exp": expires}, SECRET, algorithm="HS256")
+
+
+def _playback_ok(key: str, token: str) -> bool:
+    """A short-lived ticket for one object. AVPlayer cannot send an Authorization
+    header, so playback is authorised by a signed URL instead — the same shape the
+    cloud uses, so nothing changes when storage moves."""
+    if not token:
+        return False
+    try:
+        return jwt.decode(token, SECRET, algorithms=["HS256"]).get("k") == key
+    except jwt.PyJWTError:
+        return False
+
+
+@app.get("/avatar/{handle}.jpg")
+def avatar(handle: str, db: Session = Depends(get_db)):
+    """A profile photo, or 404 so the page falls back to initials."""
+    u = db.execute(select(User).where(User.handle == handle)).scalar_one_or_none()
+    if not u or not u.avatar_key:
+        raise HTTPException(404, "No avatar")
+    try:
+        data = get_storage().avatar_bytes(u.avatar_key)
+    except FileNotFoundError:
+        raise HTTPException(404, "No avatar")
+    return Response(data, media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.get("/video/{key}.mov")
+def video_file(key: str, t: str = "", u: User | None = Depends(optional_user),
+               db: Session = Depends(get_db)):
+    """Served from disk locally; in the cloud the client is sent straight to R2.
+
+    Redirecting rather than proxying is the whole point of R2 — the bytes go from
+    Cloudflare to the viewer without passing through here, which is what keeps
+    egress free and this process idle during playback.
+    """
+    if not _playback_ok(key, t) and not _may_view(_owner_of(db, video=key), u, db):
+        raise HTTPException(404, "No video")
+    st = get_storage()
+    if isinstance(st, LocalStorage):
+        p = st.video_path(key)
+        if not p.exists():
+            raise HTTPException(404, "No video")
+        return FileResponse(p, media_type="video/quicktime")
+    return RedirectResponse(st.video_url(key), status_code=307)
+
+
+@app.post("/v1/videos")
+async def upload(
+    title: str = Form(...),
+    note: str = Form(""),
+    style: str = Form("Bachata"),
+    level: str = Form("All levels"),
+    fps: float = Form(30.0),
+    pose3d: str = Form(...),          # JSON: {"j": [[[x,y,z]…]…]}
+    pose2d: str = Form(""),           # JSON: {"j": [[[x,y]…]…]} — overlays the video
+    visibility: str = Form("private"),  # private by default; going public is a choice
+    video: UploadFile | None = File(None),
+    u: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """The app posts here. No pose track, no video — that is the platform rule,
+    enforced by pose3d being required rather than by a policy document."""
+    try:
+        p3 = json.loads(pose3d)
+    except json.JSONDecodeError:
+        raise HTTPException(400, "pose3d is not valid JSON")
+    if not p3.get("j"):
+        raise HTTPException(400, "pose3d has no joints")
+    if visibility not in ("private", "granted", "public"):
+        raise HTTPException(400, "visibility must be private, granted or public")
+
+    st = get_storage()
+    n = len(db.execute(select(Video).where(Video.user_id == u.id)).scalars().all()) + 1
+    stem = f"{u.handle}/upload-{n}"
+    frames = len(p3["j"][0])
+    st.put_pose(f"{stem}-3d", {"fps": fps, "frames": frames, "dancers": len(p3["j"]),
+                               "height": p3.get("height", 1.6),
+                               "centre": p3.get("centre", [0, 0, 0]), "j": p3["j"]})
+    pose2d_key = ""
+    if pose2d:
+        p2 = json.loads(pose2d)
+        st.put_pose(f"{stem}-2d", {"fps": fps, "frames": len(p2["j"][0]), "j": p2["j"],
+                                   "vis": p2.get("vis", [])})
+        pose2d_key = f"{stem}-2d"
+    video_key = ""
+    if video is not None:
+        st.put_video(stem.replace("/", "-"), await video.read())
+        video_key = stem.replace("/", "-")
+
+    v = Video(user_id=u.id, title=title, note=note, style=style, level=level,
+              pose_key=f"{stem}-3d", pose2d_key=pose2d_key, video_key=video_key,
+              dancers=len(p3["j"]), frames=frames, fps=int(fps),
+              visibility=visibility)
+    db.add(v); db.commit(); db.refresh(v)
+    return {"id": v.id, "url": f"/v/{v.id}", "profile": f"/@{u.handle}",
+            "visibility": v.visibility}
+
+
+# ── auth ───────────────────────────────────────────────────────────────────
+
+@app.post("/v1/auth/signin")
+def sign_in(payload: dict, db: Session = Depends(get_db)):
+    """Exchange Apple's identity token for a session. Called once per device."""
+    token = payload.get("idToken") or payload.get("identityToken") or ""
+    if not token:
+        raise HTTPException(400, "idToken required")
+    claims = verify_provider_token(token)
+    sub = claims["sub"]
+    u = db.execute(select(User).where(User.auth_uid == sub)).scalar_one_or_none()
+    created = False
+    if not u:
+        # Apple only sends the name on the very first sign-in, so take it if offered.
+        u = User(auth_uid=sub, email=claims.get("email", "") or "", handle="",
+                 display_name=payload.get("displayName") or claims.get("name") or "Dancer")
+        db.add(u); db.commit(); db.refresh(u)
+        created = True
+    tok = issue_session(u)
+    resp = JSONResponse({"token": tok, "created": created,
+                         "needs_handle": not u.handle,
+                         "me": {"handle": u.handle, "display_name": u.display_name}})
+    # the app uses the Bearer token; a browser gets a cookie so server-rendered
+    # pages know who is asking without any JavaScript
+    resp.set_cookie(COOKIE, tok, httponly=True, samesite="lax",
+                    max_age=180 * 86400, path="/")
+    return resp
+
+
+@app.get("/v1/me")
+def me(u: User = Depends(current_user)):
+    return {"handle": u.handle, "display_name": u.display_name, "bio": u.bio,
+            "city": u.city, "styles": u.styles, "levels": u.levels,
+            "takes_students": bool(u.takes_students),
+            "avatar": f"/avatar/{u.handle}.jpg" if u.avatar_key else "",
+            "videos": [{"id": v.id, "title": v.title, "note": v.note,
+                        "style": v.style, "level": v.level,
+                        "visibility": v.visibility,
+                        "frames": v.frames, "has_video": v.has_video,
+                        "pose_key": v.pose_key, "pose2d_key": v.pose2d_key,
+                        "video_key": v.video_key, "fps": int(v.fps or 30)}
+                       for v in u.videos]}
+
+
+@app.patch("/v1/me")
+def update_me(payload: dict, u: User = Depends(current_user),
+              db: Session = Depends(get_db)):
+    if "handle" in payload:
+        h = payload["handle"].strip().lower()
+        if not h.isalnum() or not 3 <= len(h) <= 30:
+            raise HTTPException(400, "Handle must be 3-30 letters or numbers")
+        if h in RESERVED:
+            # Handles live at the site root, so one of these would shadow a page.
+            raise HTTPException(400, "That handle is reserved")
+        taken = db.execute(select(User).where(User.handle == h,
+                                              User.id != u.id)).scalar_one_or_none()
+        if taken:
+            raise HTTPException(409, "That handle is taken")
+        u.handle = h
+    for field in ("display_name", "bio", "city", "styles", "levels"):
+        if field in payload:
+            setattr(u, field, payload[field])
+    if "takes_students" in payload:
+        u.takes_students = 1 if payload["takes_students"] else 0
+    db.commit()
+    return {"ok": True, "handle": u.handle}
+
+
+# ── the web session ────────────────────────────────────────────────────────
+
+@app.get("/signin", response_class=HTMLResponse)
+def signin_page(request: Request):
+    return templates.TemplateResponse(request, "signin.html", {})
+
+
+@app.get("/signout")
+def signout():
+    resp = RedirectResponse("/", status_code=303)
+    resp.delete_cookie(COOKIE, path="/")
+    return resp
+
+
+@app.get("/me", response_class=HTMLResponse)
+def my_page(request: Request, u: User | None = Depends(optional_user)):
+    """Everything you have posted, whatever its visibility. Only you see this."""
+    if not u:
+        return RedirectResponse("/signin", status_code=303)
+    if not u.handle:
+        return templates.TemplateResponse(request, "handle.html", {"u": u})
+    vids = sorted(u.videos, key=lambda v: v.created_at, reverse=True)
+    return templates.TemplateResponse(request, "me.html", {"u": u, "videos": vids})
+
+
+# ── browsing ───────────────────────────────────────────────────────────────
+
+def _card(v: Video) -> dict:
+    """One video as the app draws it. Credit travels with the clip, always."""
+    return {"id": v.id, "title": v.title, "style": v.style, "level": v.level,
+            "visibility": v.visibility, "frames": v.frames, "fps": int(v.fps or 30),
+            "has_video": v.has_video, "dancers": v.dancers,
+            "pose_key": v.pose_key, "pose2d_key": v.pose2d_key,
+            "video_key": v.video_key, "note": v.note,
+            "by": {"handle": v.user.handle, "display_name": v.user.display_name,
+                   "avatar": f"/avatar/{v.user.handle}.jpg" if v.user.avatar_key else ""}}
+
+
+def _visible_videos(db: Session, me: User | None) -> list[Video]:
+    vids = db.execute(select(Video).where(Video.visibility == "public")).scalars().all()
+    if me:
+        rest = db.execute(select(Video).where(Video.visibility != "public")).scalars().all()
+        vids += [v for v in rest if _may_view(v, me, db)]
+    return vids
+
+
+@app.get("/v1/shared")
+def shared_with_me(me: User = Depends(current_user), db: Session = Depends(get_db)):
+    """What other people have let you see. The inbound half of a grant."""
+    grants = db.execute(select(Grant).where(Grant.viewer_id == me.id,
+                                            Grant.revoked_at.is_(None))).scalars().all()
+    out = []
+    for g in grants:
+        vids = [v for v in g.owner.videos
+                if v.visibility == "granted"
+                and (g.video_id is None or g.video_id == v.id)]
+        if vids:
+            out.append({"handle": g.owner.handle,
+                        "display_name": g.owner.display_name,
+                        "avatar": f"/avatar/{g.owner.handle}.jpg" if g.owner.avatar_key else "",
+                        "videos": [_card(v) for v in
+                                   sorted(vids, key=lambda v: v.created_at, reverse=True)]})
+    return {"from": out}
+
+
+# ── who you have let in ────────────────────────────────────────────────────
+
+@app.get("/v1/grants")
+def list_grants(u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Everyone who can see your shared videos."""
+    rows = db.execute(select(Grant).where(Grant.owner_id == u.id,
+                                          Grant.revoked_at.is_(None))).scalars().all()
+    return {"grants": [{"id": g.id, "handle": g.viewer.handle,
+                        "display_name": g.viewer.display_name,
+                        "avatar": f"/avatar/{g.viewer.handle}.jpg" if g.viewer.avatar_key else "",
+                        "since": g.created_at.isoformat(),
+                        "video_id": g.video_id,
+                        "scope": g.video.title if g.video else "Everything I share"}
+                       for g in rows]}
+
+
+@app.post("/v1/grants")
+def add_grant(payload: dict, u: User = Depends(current_user),
+              db: Session = Depends(get_db)):
+    """Let one person see your shared videos. Idempotent — granting twice is fine."""
+    handle = (payload.get("handle") or "").strip().lstrip("@").lower()
+    if not handle:
+        raise HTTPException(400, "handle required")
+    viewer = db.execute(select(User).where(User.handle == handle)).scalar_one_or_none()
+    if not viewer:
+        raise HTTPException(404, f"Nobody here is called @{handle}")
+    if viewer.id == u.id:
+        raise HTTPException(400, "You can already see your own videos")
+
+    video_id = payload.get("video_id")
+    if video_id is not None:
+        v = db.get(Video, int(video_id))
+        if not v or v.user_id != u.id:
+            raise HTTPException(404, "No such video")
+        # Sharing a clip is what makes it shared; asking twice would be a trap.
+        if v.visibility == "private":
+            v.visibility = "granted"
+
+    existing = db.execute(select(Grant).where(
+        Grant.owner_id == u.id, Grant.viewer_id == viewer.id,
+        Grant.video_id.is_(None) if video_id is None
+        else Grant.video_id == int(video_id))).scalars().first()
+    if existing:
+        # Re-granting someone you revoked reuses the row rather than piling up history.
+        existing.revoked_at = None
+        g = existing
+    else:
+        g = Grant(owner_id=u.id, viewer_id=viewer.id,
+                  video_id=int(video_id) if video_id is not None else None)
+        db.add(g)
+    db.commit(); db.refresh(g)
+    return {"id": g.id, "handle": viewer.handle, "display_name": viewer.display_name,
+            "video_id": g.video_id}
+
+
+@app.delete("/v1/grants/{grant_id}")
+def revoke_grant(grant_id: int, u: User = Depends(current_user),
+                 db: Session = Depends(get_db)):
+    """Take it back. The next request from that person is refused."""
+    g = db.get(Grant, grant_id)
+    if not g or g.owner_id != u.id:
+        raise HTTPException(404, "No such grant")
+    g.revoked_at = dt.datetime.utcnow()
+    db.commit()
+    return {"ok": True, "revoked": g.viewer.handle}
+
+
+@app.get("/v1/videos/{video_id}/playback")
+def playback(video_id: int, u: User | None = Depends(optional_user),
+             db: Session = Depends(get_db)):
+    """A short-lived URL for one video, checked against who is asking.
+
+    Handing out an expiring link rather than a permanent path is what makes access
+    revocable: turn a post private and the next link is refused, while the one
+    already issued dies on its own.
+    """
+    v = db.get(Video, video_id)
+    if not _may_view(v, u, db) or not v.video_key:
+        raise HTTPException(404, "No video")
+    st = get_storage()
+    if isinstance(st, LocalStorage):
+        expires = int(time.time()) + PLAYBACK_TTL
+        url = f"/video/{v.video_key}.mov?t={_playback_token(v.video_key, expires)}"
+    else:
+        url = st.video_url(v.video_key)
+    return {"url": url, "expires_in": PLAYBACK_TTL}
+
+
+@app.post("/v1/videos/{video_id}/visibility")
+def set_visibility(video_id: int, payload: dict,
+                   u: User = Depends(current_user), db: Session = Depends(get_db)):
+    v = db.get(Video, video_id)
+    if not v or v.user_id != u.id:
+        raise HTTPException(404, "Not your video")
+    want = payload.get("visibility")
+    if want not in ("private", "granted", "public"):
+        raise HTTPException(400, "visibility must be private, granted or public")
+    v.visibility = want
+    db.commit()
+    return {"ok": True, "visibility": v.visibility}
+
+
+RESERVED = {"signin", "signout", "me", "city", "v", "pose", "video", "static",
+            "api", "v1", "admin", "about", "help", "support", "settings", "new",
+            "search", "explore", "login", "logout", "signup", "terms", "privacy"}
+
+
+@app.get("/v1/handles/{handle}/available")
+def handle_available(handle: str, db: Session = Depends(get_db)):
+    h = handle.strip().lower()
+    if len(h) < 3:
+        return {"ok": False, "why": "At least 3 characters"}
+    if len(h) > 30:
+        return {"ok": False, "why": "At most 30 characters"}
+    if not h.isalnum():
+        return {"ok": False, "why": "Letters and numbers only"}
+    if h in RESERVED:
+        return {"ok": False, "why": "That one is reserved"}
+    taken = db.execute(select(User).where(User.handle == h)).scalar_one_or_none()
+    return {"ok": not taken, "why": "Already taken" if taken else "Available"}

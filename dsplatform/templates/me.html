@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Your videos · Dance Sage{% endblock %}
+{% block body %}
+<div class="who">
+  {% if u.avatar_key %}<img class="av" src="/avatar/{{ u.handle }}.jpg" alt="">
+  {% else %}<div class="av ph">{{ (u.display_name or '?')[0] }}</div>{% endif %}
+  <div class="info">
+    <h1>{{ u.display_name }}</h1>
+    <div class="loc">@{{ u.handle }} &middot; {{ u.city or 'no city set' }}</div>
+    <div class="stats">
+      <div><b>{{ videos|length }}</b><span>total</span></div>
+      <div><b>{{ videos|selectattr('visibility','equalto','public')|list|length }}</b><span>public</span></div>
+      <div><b>{{ videos|rejectattr('visibility','equalto','public')|list|length }}</b><span>private</span></div>
+    </div>
+    <div>
+      <a class="chip" href="/@{{ u.handle }}">View public page</a>
+      <a class="chip" href="/signout">Sign out</a>
+    </div>
+  </div>
+</div>
+<p class="sub">Everything you have posted. Only you can see this page — your public page
+shows only what is marked public.</p>
+<div class="grid">
+  {% for v in videos %}
+  <div class="card">
+    <a href="/v/{{ v.id }}"><canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas></a>
+    <div class="meta">
+      <div class="t">{{ v.title }}</div>
+      <div class="s">{{ v.seconds }}s{% if v.has_video %} &middot; video{% endif %}</div>
+      <div style="margin-top:9px;display:flex;gap:5px" data-video="{{ v.id }}">
+        {% for state, label in [('public','Public'), ('granted','Shared'), ('private','Private')] %}
+        <button class="vis {% if v.visibility == state %}on{% endif %}" data-set="{{ state }}">{{ label }}</button>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% if not videos %}<p class="sub">Nothing yet. Record something in the app.</p>{% endif %}
+<style>
+  .vis{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--muted);
+    font:600 .68rem/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;
+    padding:6px 4px;border-radius:6px;cursor:pointer}
+  .vis.on{background:var(--gold);border-color:var(--gold);color:#241a06}
+</style>
+{% endblock %}
+{% block js %}<script>
+document.querySelectorAll('canvas[data-pose]').forEach(c=>{ new Skeleton(c,{yaw:0.3}).load(c.dataset.pose); });
+document.querySelectorAll('[data-video]').forEach(row=>{
+  row.querySelectorAll('button.vis').forEach(b=> b.onclick = async () => {
+    const r = await fetch(`/v1/videos/${row.dataset.video}/visibility`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({visibility: b.dataset.set})});
+    if (r.ok) { row.querySelectorAll('button.vis').forEach(x=>x.classList.remove('on'));
+                b.classList.add('on'); }
+  });
+});
+</script>{% endblock %}

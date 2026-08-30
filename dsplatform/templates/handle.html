@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Pick your handle · Dance Sage{% endblock %}
+{% block body %}
+<div class="pick">
+  <p class="eyebrow">One last thing</p>
+  <h1>Pick your handle</h1>
+  <p class="sub">This is where people will find you. Choose carefully &mdash; changing it later
+  breaks every link anyone has shared.</p>
+
+  <div class="preview"><span class="dim">dancesage.com/@</span><span id="pv">yourhandle</span></div>
+
+  <form id="f">
+    <label class="fl">Handle
+      <div class="wrap-in">
+        <span class="at">@</span>
+        <input id="h" placeholder="abduradi" autocapitalize="none" autocorrect="off"
+               spellcheck="false" maxlength="30" required>
+        <span class="tick" id="tick"></span>
+      </div>
+      <div class="note" id="note">3&ndash;30 letters or numbers</div>
+    </label>
+    <label class="fl">Display name
+      <input id="n" value="{{ u.display_name }}" maxlength="80">
+      <div class="note">Shown on your profile. You can change this any time.</div>
+    </label>
+    <button type="submit" id="go" disabled>Continue</button>
+    <div class="note err" id="err"></div>
+  </form>
+</div>
+<style>
+  .pick{max-width:440px;margin:24px auto 0}
+  .eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--gold);margin:0 0 10px}
+  .pick h1{font-size:1.7rem;margin:0 0 8px}
+  .preview{background:var(--panel);border:1px solid var(--line);border-radius:11px;
+    padding:16px 18px;font-family:var(--mono);font-size:1.02rem;margin:22px 0 24px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .preview .dim{color:var(--faint)}
+  .preview #pv{color:var(--teal)}
+  #f{display:flex;flex-direction:column;gap:20px}
+  .fl{display:flex;flex-direction:column;gap:7px;font-size:.8rem;color:var(--muted)}
+  .wrap-in{position:relative;display:flex;align-items:center}
+  .wrap-in .at{position:absolute;left:13px;color:var(--faint);font-family:var(--mono)}
+  #f input{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--text);
+    padding:12px 14px;border-radius:10px;font-size:1rem}
+  .wrap-in input{padding-left:30px;padding-right:38px;font-family:var(--mono)}
+  #f input:focus{outline:2px solid var(--gold);outline-offset:1px}
+  .wrap-in.good input{border-color:#3ad6b0}
+  .wrap-in.bad  input{border-color:#ff8fa3}
+  .tick{position:absolute;right:13px;font-size:.95rem}
+  .wrap-in.good .tick::after{content:"\\2713";color:#3ad6b0}
+  .wrap-in.bad  .tick::after{content:"\\00d7";color:#ff8fa3}
+  .note{font-size:.76rem;color:var(--faint)}
+  .note.good{color:#3ad6b0}
+  .note.bad{color:#ff8fa3}
+  .note.err{color:#ff8fa3;min-height:1.1em}
+  #go{background:var(--gold);border:none;color:#241a06;font:600 .95rem system-ui;
+    padding:13px;border-radius:10px;cursor:pointer}
+  #go[disabled]{opacity:.4;cursor:default}
+</style>
+{% endblock %}
+{% block js %}<script>
+const h = document.getElementById('h'), pv = document.getElementById('pv'),
+      note = document.getElementById('note'), go = document.getElementById('go'),
+      box = document.querySelector('.wrap-in'), err = document.getElementById('err');
+let timer = null, okNow = false;
+
+function setState(state, msg) {
+  box.classList.toggle('good', state === 'good');
+  box.classList.toggle('bad',  state === 'bad');
+  note.className = 'note' + (state === 'idle' ? '' : ' ' + state);
+  note.textContent = msg;
+  okNow = state === 'good';
+  go.disabled = !okNow;
+}
+
+h.addEventListener('input', () => {
+  const v = h.value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (v !== h.value) h.value = v;                    // strip as they type
+  pv.textContent = v || 'yourhandle';
+  clearTimeout(timer);
+  if (v.length < 3) { setState('idle', '3–30 letters or numbers'); return; }
+  setState('idle', 'Checking…');
+  timer = setTimeout(async () => {
+    const r = await (await fetch(`/v1/handles/${v}/available`)).json();
+    setState(r.ok ? 'good' : 'bad', r.why);
+  }, 300);
+});
+
+document.getElementById('f').onsubmit = async e => {
+  e.preventDefault();
+  if (!okNow) return;
+  go.disabled = true; go.textContent = 'Setting up…'; err.textContent = '';
+  const r = await fetch('/v1/me', {method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({handle: h.value, display_name: document.getElementById('n').value.trim()})});
+  if (r.ok) location.href = '/me';
+  else { err.textContent = (await r.json()).detail; go.disabled = false; go.textContent = 'Continue'; }
+};
+</script>{% endblock %}
