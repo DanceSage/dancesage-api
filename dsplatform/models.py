@@ -8,7 +8,11 @@ from .db import Base
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
-    handle: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    # Nullable, and NULL rather than "" before one is chosen. The column is unique,
+    # and SQL lets many rows be NULL but only one be the empty string — so a second
+    # person signing up would collide with the first on a handle neither has yet.
+    handle: Mapped[str | None] = mapped_column(String(40), unique=True, index=True,
+                                               nullable=True, default=None)
     display_name: Mapped[str] = mapped_column(String(80))
     bio: Mapped[str] = mapped_column(Text, default="")
     city: Mapped[str] = mapped_column(String(60), index=True, default="")

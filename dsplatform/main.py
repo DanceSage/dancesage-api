@@ -27,6 +27,22 @@ BACKUP_HOURS = float(os.environ.get("BACKUP_EVERY_HOURS", "12"))
 
 
 @app.on_event("startup")
+def _migrate():
+    """Schema changes create_all cannot make.
+
+    create_all only creates tables that are missing; it never alters one that
+    exists. A model that says nullable over a table that says NOT NULL looks
+    correct in the code and fails at the first insert.
+    """
+    from .migrate_handle_null import migrate
+    url = os.environ.get("DATABASE_URL", "sqlite:///./dancesage.db")
+    try:
+        migrate(url.replace("sqlite:////", "/").replace("sqlite:///", ""))
+    except Exception as e:
+        print(f"migration skipped: {e}", flush=True)
+
+
+@app.on_event("startup")
 async def _schedule_backups():
     """Back the database up to R2, on a loop, for as long as the server runs.
 
@@ -338,7 +354,7 @@ def sign_in(payload: dict, db: Session = Depends(get_db)):
     created = False
     if not u:
         # Apple only sends the name on the very first sign-in, so take it if offered.
-        u = User(auth_uid=sub, email=claims.get("email", "") or "", handle="",
+        u = User(auth_uid=sub, email=claims.get("email", "") or "", handle=None,
                  display_name=payload.get("displayName") or claims.get("name") or "Dancer")
         db.add(u); db.commit(); db.refresh(u)
         created = True
