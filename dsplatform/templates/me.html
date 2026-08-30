@@ -45,6 +45,19 @@ shows only what is marked public.</p>
         <button class="vis {% if v.visibility == state %}on{% endif %}" data-set="{{ state }}">{{ label }}</button>
         {% endfor %}
       </div>
+      {# Sharing this one clip with one person, rather than everything at once. #}
+      <div class="one-share" data-share="{{ v.id }}">
+        <button class="share-toggle">Share this one &rsaquo;</button>
+        <div class="share-panel">
+          <div class="share-row">
+            <span class="at">@</span><input placeholder="their handle"
+              autocapitalize="none" autocorrect="off">
+            <button class="share-go">Add</button>
+          </div>
+          <div class="share-msg"></div>
+          <ul class="share-who"></ul>
+        </div>
+      </div>
     </div>
   </div>
   {% endfor %}
@@ -55,6 +68,24 @@ shows only what is marked public.</p>
     font:600 .68rem/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;
     padding:6px 4px;border-radius:6px;cursor:pointer}
   .vis.on{background:var(--gold);border-color:var(--gold);color:#241a06}
+  .one-share{margin-top:8px}
+  .share-toggle{background:none;border:none;color:var(--muted);cursor:pointer;
+    font:600 .7rem/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;padding:2px 0}
+  .share-toggle:hover{color:var(--gold)}
+  .share-panel{display:none;margin-top:8px}
+  .share-panel.open{display:block}
+  .share-row{display:flex;gap:5px;align-items:center}
+  .share-row .at{color:var(--faint);font-size:.85rem}
+  .share-row input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);
+    color:var(--text);padding:6px 9px;border-radius:7px;font-size:.8rem}
+  .share-go{background:var(--gold);border:none;color:#241a06;font:600 .72rem var(--font-body);
+    padding:6px 11px;border-radius:7px;cursor:pointer}
+  .share-msg{font-size:.72rem;color:var(--rose);min-height:1em;margin-top:5px}
+  .share-who{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:5px}
+  .share-who li{display:flex;align-items:center;gap:5px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:999px;padding:3px 5px 3px 9px;font-size:.72rem}
+  .share-who button{background:none;border:none;color:var(--rose);cursor:pointer;
+    font-size:.85rem;line-height:1;padding:0 3px}
   .share-box{border:1px solid var(--line);background:var(--panel);border-radius:16px;
     padding:20px 22px;margin:0 0 30px}
   .share-box h2{font-size:1.05rem;margin:0 0 6px}
@@ -89,6 +120,58 @@ document.querySelectorAll('[data-video]').forEach(row=>{
     if (r.ok) { row.querySelectorAll('button.vis').forEach(x=>x.classList.remove('on'));
                 b.classList.add('on'); }
   });
+});
+
+// ── per-video sharing ───────────────────────────────────────────────────────
+// A grant naming a video covers only that video; the server hides the rest.
+document.querySelectorAll('[data-share]').forEach(box => {
+  const id = box.dataset.share;
+  const panel = box.querySelector('.share-panel');
+  const input = box.querySelector('input');
+  const msg = box.querySelector('.share-msg');
+  const who = box.querySelector('.share-who');
+
+  async function refresh() {
+    const r = await fetch('/v1/grants');
+    if (!r.ok) return;
+    const { grants } = await r.json();
+    who.innerHTML = '';
+    grants.filter(g => String(g.video_id) === id).forEach(g => {
+      const li = document.createElement('li');
+      li.innerHTML = `@${g.handle}<button title="Remove">&times;</button>`;
+      li.querySelector('button').onclick = async () => {
+        await fetch(`/v1/grants/${g.id}`, { method: 'DELETE' });
+        refresh();
+      };
+      who.appendChild(li);
+    });
+  }
+  box.querySelector('.share-toggle').onclick = () => {
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) refresh();
+  };
+  async function add() {
+    msg.textContent = '';
+    const h = input.value.trim().replace(/^@/, '');
+    if (!h) return;
+    const r = await fetch('/v1/grants', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle: h, video_id: Number(id) })
+    });
+    if (r.ok) {
+      input.value = '';
+      // Sharing one clip marks it Shared; reflect that without a reload.
+      const row = document.querySelector(`[data-video="${id}"]`);
+      if (row) {
+        row.querySelectorAll('button.vis').forEach(x => x.classList.remove('on'));
+        const g = row.querySelector('button.vis[data-set="granted"]');
+        if (g) g.classList.add('on');
+      }
+      refresh();
+    } else msg.textContent = (await r.json()).detail || 'Could not add them.';
+  }
+  box.querySelector('.share-go').onclick = add;
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
 });
 
 // ── grants: the web half of the phone's Sharing screen ──────────────────────
