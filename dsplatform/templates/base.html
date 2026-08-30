@@ -90,11 +90,10 @@
        different machine and may sit on a subdomain. -->
   <nav>
     <a href="https://dancesage.com/">Home</a>
-    <a href="https://dancesage.com/#app">The App</a>
-    <a href="https://dancesage.com/lab.html">The Lab</a>
-    <a href="/city/toronto">Teachers</a>
-    {# Your own face rather than the words "Your videos". The nav should say
-       this place is yours, not offer you a link to it. #}
+    <a href="https://dancesage.com/app.html">App</a>
+    <a href="https://dancesage.com/lab.html">Lab</a>
+    <a href="https://dancesage.com/test-the-app.html">Get DanceSage</a>
+    {# Signed in, you are your face everywhere until you sign out. #}
     {% if me %}
       <a class="avatar" href="/me" title="Your profile" aria-label="Your profile">
         {% if me.avatar_key %}<img src="/avatar/{{ me.handle }}.jpg" alt="">
