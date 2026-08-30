@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .db import get_db, Base, engine
+from .db import get_db, Base, engine, SessionLocal
 from .models import User, Video, Grant
 from .storage import get_storage, LocalStorage
 from .auth import (verify_provider_token, issue_session, current_user,
@@ -23,8 +23,37 @@ from .auth import (verify_provider_token, issue_session, current_user,
 HERE = pathlib.Path(__file__).parent
 app = FastAPI(title="Dance Sage")
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
-templates = Jinja2Templates(directory=str(HERE / "templates"))
+def _nav_user(request: Request) -> dict:
+    """Puts `me` in front of every template so the shared header can decide
+    between "Sign in" and "Your videos".
+
+    Done here rather than threading a user through nine route signatures — the
+    nav is chrome, and chrome should not change what each page has to accept.
+    """
+    tok = request.cookies.get(COOKIE, "")
+    if not tok:
+        return {"me": None}
+    try:
+        uid = jwt.decode(tok, SECRET, algorithms=["HS256"]).get("uid")
+    except jwt.PyJWTError:
+        return {"me": None}
+    db = SessionLocal()
+    try:
+        return {"me": db.get(User, uid)}
+    finally:
+        db.close()
+
+
+templates = Jinja2Templates(directory=str(HERE / "templates"),
+                            context_processors=[_nav_user])
 Base.metadata.create_all(engine)
+
+
+@app.get("/health")
+def health():
+    """Cheap and dependency-free — it must not touch R2 or the database, or a
+    slow bucket would look like a dead server and get the machine restarted."""
+    return {"ok": True}
 
 
 @app.get("/", response_class=HTMLResponse)

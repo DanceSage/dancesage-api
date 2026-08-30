@@ -1,0 +1,10 @@
+.env*
+storage/
+*.db
+.git/
+__pycache__/
+*.pyc
+api/
+src/
+tests/
+*.pt

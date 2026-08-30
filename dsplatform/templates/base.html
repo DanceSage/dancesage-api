@@ -2,26 +2,49 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{% block title %}Dance Sage{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500..750&family=Outfit:wght@300..700&display=swap" rel="stylesheet">
 <style>
+  /* Tokens copied verbatim from the website's styles.css. These pages are served
+     by a different machine, so the only thing keeping them one product is that
+     they agree on the palette and the type. If the site's palette changes, change
+     it here in the same commit. */
   :root{
-    --bg:#0c0b0f; --panel:#16141b; --panel2:#1e1b24; --line:#2b2733;
-    --text:#efe9f0; --muted:#a099ab; --faint:#7c7487;
-    --teal:#3ad6b0; --rose:#ff8fa3; --gold:#f5d06f;
+    --bg:#080b0d; --bg-soft:#10161a;
+    --panel:rgba(255,255,255,0.07); --panel-strong:rgba(255,255,255,0.11);
+    --line:rgba(255,255,255,0.13);
+    --text:rgba(255,255,255,0.93); --muted:rgba(255,255,255,0.68);
+    --faint:rgba(255,255,255,0.48);
+    --gold:#f5d06f; --accent-2:#49c2b1;
+    --font-display:"Fraunces",Georgia,"Times New Roman",serif;
+    --font-body:"Outfit",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+    --max:1080px;
+    /* Skeleton colours stay as they are: they are content, not chrome, and they
+       must match what the app draws. */
+    --teal:#3ad6b0; --rose:#ff8fa3;
+    --panel2:rgba(255,255,255,0.04);
   }
   *{box-sizing:border-box}
   html{color-scheme:dark}
   body{background:var(--bg);color:var(--text);margin:0;
-    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+    font:400 16px/1.6 var(--font-body)}
   a{color:inherit;text-decoration:none}
-  .wrap{max-width:1120px;margin:0 auto;padding:0 clamp(16px,4vw,32px) 80px}
+  .wrap{max-width:var(--max);margin:0 auto;padding:0 clamp(16px,4vw,32px) 80px}
+
+  /* Header matched to the site's, so moving between the two is not a jolt. */
   header.top{display:flex;align-items:center;justify-content:space-between;gap:16px;
-    padding:20px 0 26px;border-bottom:1px solid var(--line);margin-bottom:34px}
-  .brand{display:flex;align-items:center}
-  .brand img{height:38px;width:38px;border-radius:9px;object-fit:cover;display:block}
-  .top nav{display:flex;gap:18px;font-size:.9rem;color:var(--muted)}
+    padding:20px 0 22px;border-bottom:1px solid var(--line);margin-bottom:34px;
+    flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:600}
+  .brand img{height:36px;width:36px;border-radius:9px;object-fit:cover;display:block}
+  .top nav{display:flex;gap:17px;font-size:.9rem;color:var(--muted);flex-wrap:wrap}
   .top nav a:hover{color:var(--text)}
-  h1{font-size:1.9rem;margin:0 0 8px;letter-spacing:-.015em;text-wrap:balance}
+  .top nav a.on{color:var(--gold)}
+
+  h1{font-family:var(--font-display);font-weight:600;font-size:2rem;
+    margin:0 0 8px;letter-spacing:-.015em;text-wrap:balance}
   .sub{color:var(--muted);margin:0 0 26px;max-width:60ch}
   .chip{display:inline-block;font-family:var(--mono);font-size:.7rem;letter-spacing:.06em;
     text-transform:uppercase;padding:3px 9px;border-radius:999px;
@@ -30,31 +53,55 @@
   .who{display:flex;gap:22px;align-items:flex-start;margin-bottom:32px;flex-wrap:wrap}
   .who .av{width:104px;height:104px;border-radius:50%;object-fit:cover;flex:none;
     border:2px solid var(--line)}
-  .who .av.ph{background:var(--panel2);display:grid;place-items:center;
-    font:600 2rem system-ui;color:var(--faint)}
+  .who .av.ph{background:var(--panel-strong);display:grid;place-items:center;
+    font:600 2rem var(--font-body);color:var(--faint)}
   .who .info{flex:1;min-width:240px}
-  .who h1{font-size:1.55rem;margin:2px 0 4px}
+  .who h1{font-size:1.7rem;margin:2px 0 4px}
   .who .loc{color:var(--muted);font-size:.9rem;margin-bottom:10px}
-  .who .stats{display:flex;gap:22px;margin:12px 0 12px;font-size:.88rem}
+  .who .stats{display:flex;gap:22px;margin:12px 0;font-size:.88rem}
   .who .stats b{display:block;font-size:1.15rem;font-family:var(--mono)}
-  .who .stats span{color:var(--muted);font-size:.76rem;text-transform:uppercase;letter-spacing:.07em}
+  .who .stats span{color:var(--muted);font-size:.76rem;text-transform:uppercase;
+    letter-spacing:.07em}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:16px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;
     overflow:hidden;transition:border-color .15s,transform .15s}
-  .card:hover{border-color:#3d3748;transform:translateY(-2px)}
+  .card:hover{border-color:rgba(245,208,111,.4);transform:translateY(-2px)}
   .card canvas{width:100%;aspect-ratio:3/4;display:block;background:var(--panel2)}
   .card .meta{padding:11px 13px 13px}
   .card .t{font-weight:600;font-size:.94rem;line-height:1.3}
   .card .s{color:var(--muted);font-size:.8rem;margin-top:3px}
-  footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);
-    color:var(--faint);font-size:.82rem}
+
+  /* Footer, so a platform page ends the way a site page does. */
+  footer.site{border-top:1px solid var(--line);margin-top:60px;padding:26px 0 40px;
+    color:var(--faint);font-size:.84rem;display:flex;gap:18px;flex-wrap:wrap;
+    justify-content:space-between}
+  footer.site a{color:var(--muted)}
+  footer.site a:hover{color:var(--text)}
 </style>
 </head><body><div class="wrap">
 <header class="top">
-  <a class="brand" href="/"><img src="/static/logo.jpeg" alt="Dance Sage"></a>
-  <nav><a href="/city/toronto">Toronto</a><a href="/me">Your videos</a></nav>
+  <a class="brand" href="/"><img src="/static/logo.jpeg" alt="Dance Sage"><span>Dance Sage</span></a>
+  <!-- The site's own links come first, so these pages are part of it rather than
+       somewhere you got lost. They are absolute: these pages are served by a
+       different machine and may sit on a subdomain. -->
+  <nav>
+    <a href="https://dancesage.com/">Home</a>
+    <a href="https://dancesage.com/#app">The App</a>
+    <a href="https://dancesage.com/lab.html">The Lab</a>
+    <a href="/city/toronto">Teachers</a>
+    {% if me %}<a class="on" href="/me">Your videos</a>
+    {% else %}<a class="on" href="/signin">Sign in</a>{% endif %}
+  </nav>
 </header>
 {% block body %}{% endblock %}
 <footer>Every video here was recorded in the Dance Sage app. No skeleton, no post.</footer>
 </div><script src="/static/skeleton.js"></script>{% block js %}{% endblock %}
+<footer class="site">
+  <div>
+    <a href="https://dancesage.com/about.html">Who We Are</a> &nbsp;·&nbsp;
+    <a href="https://dancesage.com/support.html">Support</a> &nbsp;·&nbsp;
+    <a href="https://dancesage.com/privacy.html">Privacy</a>
+  </div>
+  <div>&copy; 2026 Dance Sage</div>
+</footer>
 </body></html>

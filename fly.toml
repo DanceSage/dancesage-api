@@ -1,0 +1,31 @@
+# Dance Sage platform.
+#
+# Toronto, deliberately: R2 can only hint at a location, so the database —
+# the part that actually names people — is the piece worth pinning.
+
+app = "dancesage-api"
+primary_region = "yyz"
+
+[build]
+
+[env]
+  DATABASE_URL = "sqlite:////data/dancesage.db"
+  STORAGE_BACKEND = "r2"
+  FIREBASE_PROJECT_ID = "dancesage-61d8e"
+
+[[mounts]]
+  source = "dancesage_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Never scale to zero: the machine holds the only copy of the database,
+  # and a cold start on every request would make the app feel broken.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
