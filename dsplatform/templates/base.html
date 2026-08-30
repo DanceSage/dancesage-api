@@ -48,6 +48,18 @@
     border:1px solid rgba(245,208,111,.55);display:grid;place-items:center;flex:none}
   .top nav a.avatar img{width:100%;height:100%;object-fit:cover;display:block}
   .top nav a.avatar span{color:var(--gold);font-weight:700;font-size:.82rem}
+  .me-wrap{position:relative;display:inline-flex;align-items:center}
+  .me-menu{position:absolute;top:calc(100% + 9px);right:0;min-width:170px;
+    background:#14181b;border:1px solid rgba(255,255,255,.14);border-radius:12px;
+    padding:6px;display:none;z-index:60;box-shadow:0 16px 40px rgba(0,0,0,.5)}
+  .me-menu.open{display:block}
+  .me-menu .hd{padding:7px 11px 8px;font-size:.78rem;color:var(--faint);
+    border-bottom:1px solid rgba(255,255,255,.10);margin-bottom:5px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .me-menu a{display:block;padding:8px 11px;border-radius:8px;font-size:.88rem;
+    color:var(--text)}
+  .me-menu a:hover{background:rgba(255,255,255,.07)}
+  .me-menu a.out{color:var(--rose)}
 
   h1{font-family:var(--font-display);font-weight:600;font-size:2rem;
     margin:0 0 8px;letter-spacing:-.015em;text-wrap:balance}
@@ -97,10 +109,19 @@
     <a class="get" href="https://dancesage.com/test-the-app.html">Get App</a>
     {# Signed in, you are your face everywhere until you sign out. #}
     {% if me %}
-      <a class="avatar" href="/me" title="Your profile" aria-label="Your profile">
-        {% if me.avatar_key %}<img src="/avatar/{{ me.handle }}.jpg" alt="">
-        {% else %}<span>{{ (me.display_name or me.handle or '?')[0]|upper }}</span>{% endif %}
-      </a>
+      {# Clicking your face opens a menu. Signing out has to be reachable from
+         every page, not only from the one that happens to carry the link. #}
+      <span class="me-wrap">
+        <a class="avatar" href="/me" id="meBtn" title="Your profile" aria-label="Your profile">
+          {% if me.avatar_key %}<img src="/avatar/{{ me.handle }}.jpg" alt="">
+          {% else %}<span>{{ (me.display_name or me.handle or '?')[0]|upper }}</span>{% endif %}
+        </a>
+        <div class="me-menu" id="meMenu">
+          <div class="hd">@{{ me.handle }}</div>
+          <a href="/me">Your profile</a>
+          <a class="out" href="/signout">Sign out</a>
+        </div>
+      </span>
     {% else %}<a class="on" href="/signin">Sign in</a>{% endif %}
   </nav>
 </header>
@@ -115,4 +136,17 @@
   </div>
   <div>&copy; 2026 Dance Sage</div>
 </footer>
+<script>
+(function () {
+  var b = document.getElementById('meBtn'), m = document.getElementById('meMenu');
+  if (!b || !m) return;
+  b.addEventListener('click', function (e) { e.preventDefault(); m.classList.toggle('open'); });
+  document.addEventListener('click', function (e) {
+    if (!b.contains(e.target) && !m.contains(e.target)) m.classList.remove('open');
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') m.classList.remove('open');
+  });
+})();
+</script>
 </body></html>
