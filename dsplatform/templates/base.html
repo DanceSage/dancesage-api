@@ -42,6 +42,8 @@
   .top nav{display:flex;gap:17px;font-size:.9rem;color:var(--muted);flex-wrap:wrap}
   .top nav a:hover{color:var(--text)}
   .top nav a.on{color:var(--gold)}
+  .top nav a.get{background:var(--gold);color:#241a06;font-weight:600;
+    border-radius:999px;padding:6px 15px}
   .top nav a.avatar{width:30px;height:30px;border-radius:50%;overflow:hidden;
     border:1px solid rgba(245,208,111,.55);display:grid;place-items:center;flex:none}
   .top nav a.avatar img{width:100%;height:100%;object-fit:cover;display:block}
@@ -92,7 +94,7 @@
     <a href="https://dancesage.com/">Home</a>
     <a href="https://dancesage.com/app.html">App</a>
     <a href="https://dancesage.com/lab.html">Lab</a>
-    <a href="https://dancesage.com/test-the-app.html">Get the app</a>
+    <a class="get" href="https://dancesage.com/test-the-app.html">Get the app</a>
     {# Signed in, you are your face everywhere until you sign out. #}
     {% if me %}
       <a class="avatar" href="/me" title="Your profile" aria-label="Your profile">
