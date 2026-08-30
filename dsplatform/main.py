@@ -374,6 +374,7 @@ def sign_in(payload: dict, db: Session = Depends(get_db)):
     # face in the nav and link to your profile, and useless to anyone who steals it.
     resp.set_cookie("ds_in", u.handle or "1", httponly=False, secure=True,
                     samesite="lax", max_age=180 * 86400, path="/")
+    resp.delete_cookie("ds_out", path="/")
     return resp
 
 
