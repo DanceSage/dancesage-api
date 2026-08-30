@@ -370,8 +370,10 @@ def sign_in(payload: dict, db: Session = Depends(get_db)):
     # files with their nav baked in at build time, so they cannot know you are
     # signed in — this lets a few lines of script on them say "Your videos"
     # instead of inviting you to sign in again.
-    resp.set_cookie("ds_in", "1", httponly=False, secure=True, samesite="lax",
-                    max_age=180 * 86400, path="/")
+    # Carries the handle, not a credential — enough for a static page to show your
+    # face in the nav and link to your profile, and useless to anyone who steals it.
+    resp.set_cookie("ds_in", u.handle or "1", httponly=False, secure=True,
+                    samesite="lax", max_age=180 * 86400, path="/")
     return resp
 
 
@@ -411,7 +413,12 @@ def update_me(payload: dict, u: User = Depends(current_user),
     if "takes_students" in payload:
         u.takes_students = 1 if payload["takes_students"] else 0
     db.commit()
-    return {"ok": True, "handle": u.handle}
+    resp = JSONResponse({"ok": True, "handle": u.handle})
+    if u.handle:
+        # The nav reads this; a handle chosen after signing in must reach it.
+        resp.set_cookie("ds_in", u.handle, httponly=False, secure=True,
+                        samesite="lax", max_age=180 * 86400, path="/")
+    return resp
 
 
 # ── the web session ────────────────────────────────────────────────────────
