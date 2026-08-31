@@ -35,23 +35,30 @@ shows only what is marked public.</p>
     <div class="meta">
       <div class="t">{{ v.title }}</div>
       <div class="s">{{ v.seconds }}s{% if v.has_video %} &middot; video{% endif %}</div>
-      <div style="margin-top:9px;display:flex;gap:5px" data-video="{{ v.id }}">
-        {% for state, label in [('public','Public'), ('granted','Shared'), ('private','Private')] %}
-        <button class="vis {% if v.visibility == state %}on{% endif %}" data-set="{{ state }}">{{ label }}</button>
-        {% endfor %}
-      </div>
-      <button class="del" data-del="{{ v.id }}" data-title="{{ v.title }}">Delete</button>
-      {# Sharing this one clip with one person, rather than everything at once. #}
-      <div class="one-share" data-share="{{ v.id }}">
-        <button class="share-toggle">Share this one &rsaquo;</button>
-        <div class="share-panel">
-          <div class="share-row">
-            <span class="at">@</span><input placeholder="their handle"
-              autocapitalize="none" autocorrect="off">
-            <button class="share-go">Add</button>
+      {# One control, like the phone has: five buttons per card was five
+         decisions competing for the same glance. #}
+      <div class="vmenu" data-video="{{ v.id }}" data-title="{{ v.title }}">
+        <button class="vbtn state-{{ v.visibility }}">
+          <span class="dot"></span><span class="vlabel">{{
+            {'public':'Public','granted':'Shared','private':'Private'}[v.visibility]
+          }}</span><span class="caret">&#9662;</span>
+        </button>
+        <div class="vpanel">
+          <button class="vopt" data-set="public"><span class="dot pub"></span>Public</button>
+          <button class="vopt" data-set="granted"><span class="dot shr"></span>Shared</button>
+          <button class="vopt" data-set="private"><span class="dot prv"></span>Private</button>
+          <div class="vsep"></div>
+          <button class="vshare">Share this one&hellip;</button>
+          <button class="vdel">Delete</button>
+          <div class="sharebox">
+            <div class="share-row">
+              <span class="at">@</span><input placeholder="their handle"
+                autocapitalize="none" autocorrect="off">
+              <button class="share-go">Add</button>
+            </div>
+            <div class="share-msg"></div>
+            <ul class="share-who"></ul>
           </div>
-          <div class="share-msg"></div>
-          <ul class="share-who"></ul>
         </div>
       </div>
     </div>
@@ -60,32 +67,41 @@ shows only what is marked public.</p>
 </div>
 {% if not videos %}<p class="sub">Nothing yet. Record something in the app.</p>{% endif %}
 <style>
-  .vis{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--muted);
-    font:600 .68rem/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;
-    padding:6px 4px;border-radius:6px;cursor:pointer}
-  .vis.on{background:var(--gold);border-color:var(--gold);color:#241a06}
-  .del{float:right;background:none;border:none;color:var(--faint);cursor:pointer;
-    font:600 .7rem/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;
-    padding:2px 0;margin-top:8px}
-  .del:hover{color:var(--rose)}
-  .one-share{margin-top:8px}
-  .share-toggle{background:none;border:none;color:var(--muted);cursor:pointer;
-    font:600 .7rem/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;padding:2px 0}
-  .share-toggle:hover{color:var(--gold)}
-  .share-panel{display:none;margin-top:8px}
-  .share-panel.open{display:block}
+  .vmenu{position:relative;margin-top:10px}
+  .vbtn{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);
+    border:1px solid var(--line);color:var(--text);border-radius:999px;
+    padding:5px 11px;font:600 .78rem var(--font-body);cursor:pointer}
+  .vbtn:hover{border-color:rgba(245,208,111,.45)}
+  .vbtn .caret{color:var(--faint);font-size:.7rem}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
+  .state-public .dot,.dot.pub{background:#3ad6b0}
+  .state-granted .dot,.dot.shr{background:var(--gold)}
+  .state-private .dot,.dot.prv{background:var(--faint)}
+  .vpanel{position:absolute;left:0;top:calc(100% + 7px);min-width:190px;z-index:40;
+    background:#14181b;border:1px solid rgba(255,255,255,.14);border-radius:12px;
+    padding:6px;display:none;box-shadow:0 16px 40px rgba(0,0,0,.55)}
+  .vpanel.open{display:block}
+  .vpanel button{display:flex;align-items:center;gap:8px;width:100%;background:none;
+    border:none;color:var(--text);text-align:left;padding:8px 10px;border-radius:8px;
+    font:500 .85rem var(--font-body);cursor:pointer}
+  .vpanel button:hover{background:rgba(255,255,255,.07)}
+  .vpanel .vdel{color:var(--rose)}
+  .vsep{height:1px;background:rgba(255,255,255,.10);margin:5px 2px}
+  .sharebox{display:none;padding:6px 4px 2px;border-top:1px solid rgba(255,255,255,.10);
+    margin-top:5px}
+  .sharebox.open{display:block}
   .share-row{display:flex;gap:5px;align-items:center}
   .share-row .at{color:var(--faint);font-size:.85rem}
   .share-row input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);
     color:var(--text);padding:6px 9px;border-radius:7px;font-size:.8rem}
-  .share-go{background:var(--gold);border:none;color:#241a06;font:600 .72rem var(--font-body);
-    padding:6px 11px;border-radius:7px;cursor:pointer}
+  .share-go{background:var(--gold)!important;color:#241a06!important;
+    font:600 .72rem var(--font-body)!important;padding:6px 11px!important;
+    border-radius:7px!important;width:auto!important;flex:none}
   .share-msg{font-size:.72rem;color:var(--rose);min-height:1em;margin-top:5px}
-  .share-who{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:5px}
+  .share-who{list-style:none;margin:6px 0 2px;padding:0;display:flex;flex-wrap:wrap;gap:5px}
   .share-who li{display:flex;align-items:center;gap:5px;background:var(--panel2);
     border:1px solid var(--line);border-radius:999px;padding:3px 5px 3px 9px;font-size:.72rem}
-  .share-who button{background:none;border:none;color:var(--rose);cursor:pointer;
-    font-size:.85rem;line-height:1;padding:0 3px}
+  .share-who li button{width:auto;padding:0 3px;color:var(--rose);font-size:.85rem}
   .share-box{border:1px solid var(--line);background:var(--panel);border-radius:16px;
     padding:20px 22px;margin:0 0 30px}
   .share-box h2{font-size:1.05rem;margin:0 0 6px}
@@ -105,40 +121,54 @@ shows only what is marked public.</p>
 {% endblock %}
 {% block js %}<script>
 document.querySelectorAll('canvas[data-pose]').forEach(c=>{ new Skeleton(c,{yaw:0.3}).load(c.dataset.pose); });
-document.querySelectorAll('[data-video]').forEach(row=>{
-  row.querySelectorAll('button.vis').forEach(b=> b.onclick = async () => {
-    const r = await fetch(`/v1/videos/${row.dataset.video}/visibility`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({visibility: b.dataset.set})});
-    if (r.ok) { row.querySelectorAll('button.vis').forEach(x=>x.classList.remove('on'));
-                b.classList.add('on'); }
-  });
-});
 
-// ── deleting a post ─────────────────────────────────────────────────────────
-// Removes the video and both skeleton tracks from storage as well as the row;
-// the recording on the person's phone is not touched.
-document.querySelectorAll('[data-del]').forEach(b => {
-  b.onclick = async () => {
-    if (!confirm(`Delete “${b.dataset.title}”?\n\n`
-      + `The video and its skeleton are removed from Dance Sage. `
-      + `Anything saved on your phone is not affected. This cannot be undone.`)) return;
-    b.disabled = true;
-    const r = await fetch(`/v1/videos/${b.dataset.del}`, { method: 'DELETE' });
-    if (r.ok) b.closest('.card').remove();
-    else { b.disabled = false; alert('Could not delete that one.'); }
+// ── one menu per video: visibility, sharing, deletion ──────────────────────
+const LABEL = { public: 'Public', granted: 'Shared', private: 'Private' };
+
+document.querySelectorAll('.vmenu').forEach(menu => {
+  const id     = menu.dataset.video;
+  const btn    = menu.querySelector('.vbtn');
+  const panel  = menu.querySelector('.vpanel');
+  const shareBox = menu.querySelector('.sharebox');
+  const input  = menu.querySelector('.sharebox input');
+  const msg    = menu.querySelector('.share-msg');
+  const who    = menu.querySelector('.share-who');
+
+  const close = () => { panel.classList.remove('open'); shareBox.classList.remove('open'); };
+
+  btn.onclick = e => {
+    e.stopPropagation();
+    const wasOpen = panel.classList.contains('open');
+    document.querySelectorAll('.vpanel.open').forEach(p => {
+      p.classList.remove('open');
+      p.querySelector('.sharebox').classList.remove('open');
+    });
+    if (!wasOpen) panel.classList.add('open');
   };
-});
+  panel.onclick = e => e.stopPropagation();
+  document.addEventListener('click', close);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
 
-// ── per-video sharing ───────────────────────────────────────────────────────
-// A grant naming a video covers only that video; the server hides the rest.
-document.querySelectorAll('[data-share]').forEach(box => {
-  const id = box.dataset.share;
-  const panel = box.querySelector('.share-panel');
-  const input = box.querySelector('input');
-  const msg = box.querySelector('.share-msg');
-  const who = box.querySelector('.share-who');
+  // visibility
+  panel.querySelectorAll('.vopt').forEach(opt => {
+    opt.onclick = async () => {
+      const want = opt.dataset.set;
+      const r = await fetch(`/v1/videos/${id}/visibility`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visibility: want })
+      });
+      if (!r.ok) return;
+      btn.className = 'vbtn state-' + want;
+      menu.querySelector('.vlabel').textContent = LABEL[want];
+      close();
+    };
+  });
 
+  // sharing — reveals its own row rather than opening another screen
+  menu.querySelector('.vshare').onclick = () => {
+    shareBox.classList.toggle('open');
+    if (shareBox.classList.contains('open')) { refresh(); input.focus(); }
+  };
   async function refresh() {
     const r = await fetch('/v1/grants');
     if (!r.ok) return;
@@ -154,10 +184,6 @@ document.querySelectorAll('[data-share]').forEach(box => {
       who.appendChild(li);
     });
   }
-  box.querySelector('.share-toggle').onclick = () => {
-    panel.classList.toggle('open');
-    if (panel.classList.contains('open')) refresh();
-  };
   async function add() {
     msg.textContent = '';
     const h = input.value.trim().replace(/^@/, '');
@@ -168,27 +194,37 @@ document.querySelectorAll('[data-share]').forEach(box => {
     });
     if (r.ok) {
       input.value = '';
-      // Sharing one clip marks it Shared; reflect that without a reload.
-      const row = document.querySelector(`[data-video="${id}"]`);
-      if (row) {
-        row.querySelectorAll('button.vis').forEach(x => x.classList.remove('on'));
-        const g = row.querySelector('button.vis[data-set="granted"]');
-        if (g) g.classList.add('on');
-      }
-      refresh();
+      // sharing a clip marks it Shared; keep the button honest
+      btn.className = 'vbtn state-granted';
+      menu.querySelector('.vlabel').textContent = LABEL.granted;
+      refresh(); loadGrants();
     } else msg.textContent = (await r.json()).detail || 'Could not add them.';
   }
-  box.querySelector('.share-go').onclick = add;
+  menu.querySelector('.share-go').onclick = add;
   input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+
+  // deletion
+  menu.querySelector('.vdel').onclick = async () => {
+    if (!confirm(`Delete \u201c${menu.dataset.title}\u201d?\n\n`
+      + `The video and its skeleton are removed from Dance Sage. `
+      + `Anything saved on your phone is not affected. This cannot be undone.`)) return;
+    const r = await fetch(`/v1/videos/${id}`, { method: 'DELETE' });
+    if (r.ok) { menu.closest('.card').remove(); loadGrants(); }
+    else alert('Could not delete that one.');
+  };
 });
 
-// ── grants: the web half of the phone's Sharing screen ──────────────────────
+// ── the ledger of who has what ─────────────────────────────────────────────
 const glist = document.getElementById('glist');
 async function loadGrants() {
   const r = await fetch('/v1/grants');
   if (!r.ok) return;
   const { grants } = await r.json();
   glist.innerHTML = '';
+  if (!grants.length) {
+    glist.innerHTML = '<li style="color:var(--muted);font-size:.85rem">Nobody yet</li>';
+    return;
+  }
   for (const g of grants) {
     const li = document.createElement('li');
     const av = g.avatar
