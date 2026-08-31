@@ -40,6 +40,7 @@ shows only what is marked public.</p>
         <button class="vis {% if v.visibility == state %}on{% endif %}" data-set="{{ state }}">{{ label }}</button>
         {% endfor %}
       </div>
+      <button class="del" data-del="{{ v.id }}" data-title="{{ v.title }}">Delete</button>
       {# Sharing this one clip with one person, rather than everything at once. #}
       <div class="one-share" data-share="{{ v.id }}">
         <button class="share-toggle">Share this one &rsaquo;</button>
@@ -63,6 +64,10 @@ shows only what is marked public.</p>
     font:600 .68rem/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;
     padding:6px 4px;border-radius:6px;cursor:pointer}
   .vis.on{background:var(--gold);border-color:var(--gold);color:#241a06}
+  .del{float:right;background:none;border:none;color:var(--faint);cursor:pointer;
+    font:600 .7rem/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;
+    padding:2px 0;margin-top:8px}
+  .del:hover{color:var(--rose)}
   .one-share{margin-top:8px}
   .share-toggle{background:none;border:none;color:var(--muted);cursor:pointer;
     font:600 .7rem/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;padding:2px 0}
@@ -108,6 +113,21 @@ document.querySelectorAll('[data-video]').forEach(row=>{
     if (r.ok) { row.querySelectorAll('button.vis').forEach(x=>x.classList.remove('on'));
                 b.classList.add('on'); }
   });
+});
+
+// ── deleting a post ─────────────────────────────────────────────────────────
+// Removes the video and both skeleton tracks from storage as well as the row;
+// the recording on the person's phone is not touched.
+document.querySelectorAll('[data-del]').forEach(b => {
+  b.onclick = async () => {
+    if (!confirm(`Delete “${b.dataset.title}”?\n\n`
+      + `The video and its skeleton are removed from Dance Sage. `
+      + `Anything saved on your phone is not affected. This cannot be undone.`)) return;
+    b.disabled = true;
+    const r = await fetch(`/v1/videos/${b.dataset.del}`, { method: 'DELETE' });
+    if (r.ok) b.closest('.card').remove();
+    else { b.disabled = false; alert('Could not delete that one.'); }
+  };
 });
 
 // ── per-video sharing ───────────────────────────────────────────────────────
