@@ -42,12 +42,18 @@ class Skeleton {
       for (let k = 0; k < 3; k++) { if (j[k] < mn[k]) mn[k] = j[k]; if (j[k] > mx[k]) mx[k] = j[k]; }
     this.B = { c: [(mn[0]+mx[0])/2, (mn[1]+mx[1])/2, (mn[2]+mx[2])/2],
                s: Math.max(mx[0]-mn[0], mx[1]-mn[1], mx[2]-mn[2]) };
+    // A track with no depth came from a phone camera, where y grows downward.
+    // A fitted 3D track is metres with y up. Flipping the first puts the dancer
+    // on their head, so which way is up has to be read from the data.
+    this.flat = (mx[2] - mn[2]) < 0.01;
   }
   project(q) {
     if (this.is2d) return [q[0] * this.c.width, q[1] * this.c.height];
     const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
     const x = q[0]-this.B.c[0], y = q[1]-this.B.c[1], z = q[2]-this.B.c[2];
     const sc = Math.min(this.c.width, this.c.height) / (this.B.s * 1.45);
+    // Flat tracks are already screen-oriented: no yaw to apply, and no flip.
+    if (this.flat) return [this.c.width/2 + x*sc, this.c.height/2 + y*sc];
     return [this.c.width/2 + (x*cy + z*sy)*sc, this.c.height/2 - y*sc];
   }
   poseAt(J) {
