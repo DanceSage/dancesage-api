@@ -67,6 +67,12 @@ shows only what is marked public.</p>
 </div>
 {% if not videos %}<p class="sub">Nothing yet. Record something in the app.</p>{% endif %}
 <style>
+  /* The card clips its contents so the skeleton corners stay rounded — which
+     also clipped the dropdown out of existence. The canvas rounds itself
+     instead, and a card with an open menu rises above its neighbours. */
+  .card{overflow:visible}
+  .card canvas{border-radius:13px 13px 0 0}
+  .card:has(.vpanel.open){position:relative;z-index:50}
   .vmenu{position:relative;margin-top:10px}
   .vbtn{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);
     border:1px solid var(--line);color:var(--text);border-radius:999px;
