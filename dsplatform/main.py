@@ -72,6 +72,21 @@ async def _schedule_backups():
 def _take_backup():
     from .backup import take
     take()
+@app.middleware("http")
+async def _short_cache_for_static(request: Request, call_next):
+    """Keep /static fresh.
+
+    These files are edited in place under the same names, so a long cache means
+    a deploy lands and nobody sees it — the renderer stayed stale for hours
+    after being fixed. Content that changes name when it changes can be cached
+    hard; this cannot.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=300, must-revalidate"
+    return response
+
+
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 def _nav_user(request: Request) -> dict:
     """Puts `me` in front of every template so the shared header can decide
