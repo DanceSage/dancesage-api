@@ -39,5 +39,5 @@
 {% if not videos %}<p class="sub">Nothing published yet.</p>{% endif %}
 {% endblock %}
 {% block js %}<script>
-document.querySelectorAll('canvas[data-pose]').forEach(c=>{ new Skeleton(c,{yaw:0.3}).load(c.dataset.pose); });
+document.querySelectorAll('canvas[data-pose]').forEach(c=>{ new Skeleton(c,{yaw:0.3,still:true}).load(c.dataset.pose); });
 </script>{% endblock %}

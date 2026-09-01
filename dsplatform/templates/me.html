@@ -126,7 +126,7 @@ shows only what is marked public.</p>
 </style>
 {% endblock %}
 {% block js %}<script>
-document.querySelectorAll('canvas[data-pose]').forEach(c=>{ new Skeleton(c,{yaw:0.3}).load(c.dataset.pose); });
+document.querySelectorAll('canvas[data-pose]').forEach(c=>{ new Skeleton(c,{yaw:0.3,still:true}).load(c.dataset.pose); });
 
 // ── one menu per video: visibility, sharing, deletion ──────────────────────
 const LABEL = { public: 'Public', granted: 'Shared', private: 'Private' };

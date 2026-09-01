@@ -312,6 +312,7 @@ async def upload(
     fps: float = Form(30.0),
     pose3d: str = Form(...),          # JSON: {"j": [[[x,y,z]…]…]}
     pose2d: str = Form(""),           # JSON: {"j": [[[x,y]…]…]} — overlays the video
+    times: str = Form(""),            # JSON: seconds per frame, as actually captured
     visibility: str = Form("private"),  # private by default; going public is a choice
     video: UploadFile | None = File(None),
     u: User = Depends(current_user),
@@ -332,14 +333,27 @@ async def upload(
     n = len(db.execute(select(Video).where(Video.user_id == u.id)).scalars().all()) + 1
     stem = f"{u.handle}/upload-{n}"
     frames = len(p3["j"][0])
+    # When the pose frames were actually captured. Detection is throttled and
+    # irregular, so assuming an even spacing makes the skeleton drift away from
+    # the video it is drawn on — by seconds, over a long clip.
+    stamps = []
+    if times:
+        try:
+            stamps = [float(t) for t in json.loads(times)]
+        except (json.JSONDecodeError, TypeError, ValueError):
+            stamps = []
+    if len(stamps) != frames:
+        stamps = []
+
     st.put_pose(f"{stem}-3d", {"fps": fps, "frames": frames, "dancers": len(p3["j"]),
                                "height": p3.get("height", 1.6),
-                               "centre": p3.get("centre", [0, 0, 0]), "j": p3["j"]})
+                               "centre": p3.get("centre", [0, 0, 0]),
+                               "t": stamps, "j": p3["j"]})
     pose2d_key = ""
     if pose2d:
         p2 = json.loads(pose2d)
         st.put_pose(f"{stem}-2d", {"fps": fps, "frames": len(p2["j"][0]), "j": p2["j"],
-                                   "vis": p2.get("vis", [])})
+                                   "t": stamps, "vis": p2.get("vis", [])})
         pose2d_key = f"{stem}-2d"
     video_key = ""
     if video is not None:

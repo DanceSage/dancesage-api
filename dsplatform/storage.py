@@ -144,6 +144,13 @@ class R2Storage(Storage):
 
         account = os.environ["R2_ACCOUNT_ID"]
         self.bucket = os.environ.get("R2_BUCKET", "dancesage")
+        # Everything a non-production run writes lands under its own prefix. Object
+        # names are derived from a video count, so a local database and production
+        # storage will happily agree on a name for different clips — which is how
+        # a real recording got overwritten by a test.
+        self.prefix = os.environ.get("R2_PREFIX", "").strip("/")
+        if self.prefix:
+            self.prefix += "/"
         self.ttl = int(os.environ.get("R2_URL_TTL", "3600"))
         # A custom domain in front of the bucket lets Cloudflare cache the popular
         # clips, so the busiest videos mostly never reach R2 at all.
@@ -167,46 +174,46 @@ class R2Storage(Storage):
             raise
 
     def put_pose(self, key: str, payload: dict) -> str:
-        self.s3.put_object(Bucket=self.bucket, Key=f"pose/{key}.json",
+        self.s3.put_object(Bucket=self.bucket, Key=f"{self.prefix}pose/{key}.json",
                            Body=compact(payload),
                            ContentType="application/json",
                            ContentEncoding="gzip")
         return key
 
     def get_pose(self, key: str) -> dict:
-        return _inflate(self._get(f"pose/{key}.json"))
+        return _inflate(self._get(f"{self.prefix}pose/{key}.json"))
 
     def pose_blob(self, key: str) -> tuple[bytes, bool]:
-        blob = self._get(f"pose/{key}.json")
+        blob = self._get(f"{self.prefix}pose/{key}.json")
         return blob, blob[:2] == b"\x1f\x8b"
 
     def pose_url(self, key: str) -> str:
-        return self._url(f"pose/{key}.json")
+        return self._url(f"{self.prefix}pose/{key}.json")
 
     def put_video(self, key: str, data: bytes) -> str:
-        self.s3.put_object(Bucket=self.bucket, Key=f"video/{key}.mov",
+        self.s3.put_object(Bucket=self.bucket, Key=f"{self.prefix}video/{key}.mov",
                            Body=data, ContentType="video/quicktime")
         return key
 
     def video_url(self, key: str) -> str:
-        return self._url(f"video/{key}.mov")
+        return self._url(f"{self.prefix}video/{key}.mov")
 
     def put_avatar(self, key: str, data: bytes) -> str:
-        self.s3.put_object(Bucket=self.bucket, Key=f"avatar/{key}.jpg",
+        self.s3.put_object(Bucket=self.bucket, Key=f"{self.prefix}avatar/{key}.jpg",
                            Body=data, ContentType="image/jpeg")
         return key
 
     def avatar_bytes(self, key: str) -> bytes:
-        return self._get(f"avatar/{key}.jpg")
+        return self._get(f"{self.prefix}avatar/{key}.jpg")
 
     def delete(self, *, pose: str = "", video: str = "", avatar: str = "") -> None:
         keys = []
         if pose:
-            keys.append(f"pose/{pose}.json")
+            keys.append(f"{self.prefix}pose/{pose}.json")
         if video:
-            keys.append(f"video/{video}.mov")
+            keys.append(f"{self.prefix}video/{video}.mov")
         if avatar:
-            keys.append(f"avatar/{avatar}.jpg")
+            keys.append(f"{self.prefix}avatar/{avatar}.jpg")
         for k in keys:
             # R2 returns success for a key that is already gone, which is what we want.
             self.s3.delete_object(Bucket=self.bucket, Key=k)

@@ -15,6 +15,9 @@ class Skeleton {
     this.x = canvas.getContext('2d');
     this.yaw = opts.yaw ?? 0.25;
     this.autoplay = opts.autoplay ?? true;
+    // A card shows one frame. A page of looping skeletons is noise, and each one
+    // costs a repainting canvas — motion belongs on the clip you opened.
+    this.still = opts.still ?? false;
     this.loop = opts.loop ?? true;
     this.f = 0; this.playing = false; this.data = null; this.last = 0;
     this.onframe = opts.onframe || null;
@@ -29,10 +32,19 @@ class Skeleton {
     this.data = await (await fetch(url)).json();
     // A 2D track overlays video in pixel space; a 3D track is projected and rotatable.
     this.is2d = this.data.j[0][0][0].length === 2;
+    // Real capture times, when the recording carried them. Detection is throttled
+    // and irregular, so an even spacing is a guess — and a guess that drifts.
+    this.t = Array.isArray(this.data.t) && this.data.t.length === this.data.frames
+             ? this.data.t : null;
     this.bones = this.data.j[0][0].length === 17 ? BONES17 : BONES;
     if (!this.is2d) this.bounds();
     this.fit();
-    if (this.autoplay) this.play();
+    if (this.still) {
+      // A bit past the start: the first frame is usually someone standing still
+      // before they begin.
+      this.f = Math.floor(this.data.frames / 3);
+      this.draw();
+    } else if (this.autoplay) this.play();
     else this.draw();
     return this.data;
   }
@@ -55,6 +67,27 @@ class Skeleton {
     // Flat tracks are already screen-oriented: no yaw to apply, and no flip.
     if (this.flat) return [this.c.width/2 + x*sc, this.c.height/2 + y*sc];
     return [this.c.width/2 + (x*cy + z*sy)*sc, this.c.height/2 - y*sc];
+  }
+  /// Which pose frame belongs at this many seconds into the clip.
+  frameAtTime(sec) {
+    if (!this.t) return sec * this.data.fps;
+    const t = this.t;
+    if (sec <= t[0]) return 0;
+    if (sec >= t[t.length - 1]) return t.length - 1;
+    let lo = 0, hi = t.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (t[mid] <= sec) lo = mid; else hi = mid;
+    }
+    // Fractional, so the skeleton is interpolated between the two real samples
+    // rather than snapping to whichever is nearer.
+    const span = t[hi] - t[lo];
+    return lo + (span > 0 ? (sec - t[lo]) / span : 0);
+  }
+  timeAtFrame(f) {
+    if (!this.t) return f / this.data.fps;
+    const i = Math.max(0, Math.min(this.t.length - 1, Math.round(f)));
+    return this.t[i];
   }
   poseAt(J) {
     const n = J.length, i = Math.floor(this.f) % n, k = (i+1) % n, u = this.f - Math.floor(this.f);

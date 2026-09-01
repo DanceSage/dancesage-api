@@ -3,8 +3,15 @@
 {% block body %}
 <style>
   .player{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
-  .player canvas{width:100%;aspect-ratio:4/3;display:block;background:var(--panel2);
-    border-radius:11px;cursor:grab}
+  /* The stage takes the video's own shape rather than the column's. A phone clip
+     is portrait; stretching it to the full width of a desktop column made it
+     tower over the page and upscaled it into mush. */
+  #stage{position:relative;width:fit-content;max-width:100%;margin:0 auto;
+    border-radius:11px;overflow:hidden;background:var(--panel2)}
+  #stage video{display:block;max-width:100%;max-height:72vh;width:auto;height:auto}
+  /* Skeleton-only: no video to take the shape from, so keep it upright. */
+  .player canvas{display:block;background:var(--panel2);border-radius:11px;cursor:grab}
+  #stage:not(.has-video) canvas{width:100%;aspect-ratio:3/4;max-height:72vh}
   .player canvas.drag{cursor:grabbing}
   .ctl{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
   .ctl button{background:var(--gold);border:none;color:#241a06;font:600 .86rem system-ui;
@@ -19,10 +26,9 @@
 </style>
 <div class="two">
   <div class="player">
-    <div id="stage" style="position:relative;border-radius:11px;overflow:hidden;background:var(--panel2)">
+    <div id="stage" class="{% if v.has_video %}has-video{% endif %}">
       {% if v.has_video %}
-      <video id="vid" src="/video/{{ v.video_key }}.mov" playsinline muted loop
-             style="width:100%;display:block"></video>
+      <video id="vid" src="/video/{{ v.video_key }}.mov" playsinline muted loop></video>
       {% endif %}
       <canvas id="cv" style="{% if v.has_video %}position:absolute;inset:0;width:100%;height:100%{% endif %}"></canvas>
     </div>
@@ -103,7 +109,7 @@ if (HASVID) {
   vid.play().catch(() => {});
   vid.addEventListener('timeupdate', () => {
     if (!sk.data) return;
-    sk.f = Math.min(sk.data.frames - 1, vid.currentTime * sk.data.fps);
+    sk.f = Math.min(sk.data.frames - 1, sk.frameAtTime(vid.currentTime));
     sk.draw();
   });
   sk.pause();
@@ -113,7 +119,7 @@ if (HASVID) {
   };
   document.getElementById('scrub').oninput = e => {
     vid.pause(); document.getElementById('play').textContent = 'Play';
-    vid.currentTime = (+e.target.value) / sk.data.fps;
+    vid.currentTime = sk.timeAtFrame(+e.target.value);
   };
   apply();
 }
