@@ -27,6 +27,9 @@ class Skeleton {
     const r = this.c.getBoundingClientRect(), d = devicePixelRatio || 1;
     this.c.width = Math.max(1, r.width * d);
     this.c.height = Math.max(1, r.height * d);
+    // Setting width or height wipes the canvas. A playing skeleton repaints on
+    // the next frame; a still one would simply disappear.
+    if (this.still && this.data) this.draw();
   }
   async load(url) {
     this.data = await (await fetch(url)).json();
@@ -123,7 +126,12 @@ class Skeleton {
     this.draw();
     requestAnimationFrame(t => this.tick(t));
   }
-  play()  { if (this.playing) return; this.playing = true; this.last = 0; requestAnimationFrame(t => this.tick(t)); }
+  play()  {
+    // Refused outright when this instance is a still. Anything on the page can
+    // reach in and call play(); saying no here is the only reliable answer.
+    if (this.still || this.playing) return;
+    this.playing = true; this.last = 0; requestAnimationFrame(t => this.tick(t));
+  }
   pause() { this.playing = false; }
   seek(f) { this.f = f; this.draw(); }
 }
