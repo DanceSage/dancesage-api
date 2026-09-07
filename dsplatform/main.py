@@ -502,7 +502,8 @@ def me(u: User = Depends(current_user)):
                         "frames": v.frames, "has_video": v.has_video,
                         "pose_key": v.pose_key, "pose2d_key": v.pose2d_key,
                         "video_key": v.video_key, "fps": int(v.fps or 30),
-                        "created_at": v.created_at.isoformat()}
+                        "created_at": v.created_at.isoformat(),
+                        "reply_to": v.reply_to, "mirrored": bool(v.mirrored)}
                        # Newest first — the same order the web page shows. Attempts
                        # are not posts: they live under My lessons.
                        for v in sorted(u.videos, key=lambda v: v.created_at, reverse=True)
