@@ -70,6 +70,8 @@ document.querySelectorAll('.vmenu').forEach(menu => {
   }
   async function shareWith(body) {
     msg.textContent = '';
+    const repliesTo = menu.querySelector('.replies-to');
+    if (repliesTo) body.replies_to = repliesTo.value;
     const r = await fetch('/v1/grants', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(Object.assign({ video_id: Number(id) }, body))

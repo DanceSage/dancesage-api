@@ -100,6 +100,10 @@ class Grant(Base):
     # made it, so revoking the series finds all of them.
     series_grant_id: Mapped[int | None] = mapped_column(ForeignKey("series_grants.id"),
                                                         nullable=True, default=None, index=True)
+    # When someone passes on a video they don't own: where the receiver's
+    # attempts go — "sharer" (the person who gave it to them) or "owner" (who
+    # made it). Chosen at share time. Irrelevant when the sharer is the owner.
+    replies_to: Mapped[str] = mapped_column(String(8), default="sharer")
 
     owner: Mapped[User] = relationship(foreign_keys=[owner_id])
     viewer: Mapped[User] = relationship(foreign_keys=[viewer_id])

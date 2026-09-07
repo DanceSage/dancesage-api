@@ -489,3 +489,31 @@ def test_attempts_live_under_my_lessons_not_on_the_profile():
     assert "sent to Lteach" in client.get("/lessons", cookies={"ds_session": maya}).text
     # Nobody else's attempt can be sent by her.
     assert client.post(f"/v1/lessons/{lesson}/send", headers=hdr(maya)).status_code == 404
+
+
+def test_a_ta_chooses_where_attempts_go():
+    boss, ta, zoe = _user("bigboss"), _user("ta"), _user("zoe2")
+    hdr = lambda t: {"Authorization": f"Bearer {t}"}
+    video = _post(boss, "Cross body lead", "public")
+    pose = json.dumps({"j": [[[[0.1 * j, 0.2 * j, 0.0] for j in range(33)] for _ in range(4)]]})
+
+    # Default: attempts come to the TA who passed it on.
+    client.post("/v1/grants", json={"handle": "zoe2", "video_id": video}, headers=hdr(ta))
+    _accept_all(zoe)
+    assert client.get("/v1/lessons", headers=hdr(zoe)).json() == {"lessons": []}
+    a1 = client.post("/v1/videos", data={"title": "try 1", "pose3d": pose, "pose2d": pose, "reply_to": video}, headers=hdr(zoe)).json()["id"]
+    assert client.get("/v1/lessons", headers=hdr(zoe)).json()["lessons"][0]["teacher"]["handle"] == "ta"
+    assert client.post(f"/v1/lessons/{a1}/send", headers=hdr(zoe)).json()["to"] == "ta"
+    assert _inbox_titles(ta) == ["try 1"] and _inbox_titles(boss) == []
+
+    # The TA re-shares choosing the owner; now attempts go to the boss.
+    client.delete(f"/v1/grants/{_inbox(zoe)['from'][0]['videos'][0]['grant_id']}", headers=hdr(ta))
+    client.post("/v1/grants", json={"handle": "zoe2", "video_id": video, "replies_to": "owner"}, headers=hdr(ta))
+    _accept_all(zoe)
+    a2 = client.post("/v1/videos", data={"title": "try 2", "pose3d": pose, "pose2d": pose, "reply_to": video}, headers=hdr(zoe)).json()["id"]
+    assert client.get("/v1/lessons", headers=hdr(zoe)).json()["lessons"][0]["teacher"]["handle"] == "bigboss"
+    assert client.post(f"/v1/lessons/{a2}/send", headers=hdr(zoe)).json()["to"] == "bigboss"
+    assert _inbox_titles(boss) == ["try 2"]
+    # And Zoe can't route an attempt anywhere else herself.
+    assert client.post("/v1/grants", json={"handle": "ta", "video_id": a2}, headers=hdr(zoe)).status_code == 400
+    assert client.post("/v1/grants", json={"handle": "zoe2", "video_id": video, "replies_to": "nobody"}, headers=hdr(ta)).status_code == 400

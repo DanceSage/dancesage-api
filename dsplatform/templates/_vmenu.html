@@ -6,6 +6,11 @@
         <button class="vbtn state-public"><span class="dot"></span><span class="vlabel">Share</span><span class="caret">&#9662;</span></button>
         <div class="vpanel">
           <button class="vshare">Share with a dancer or a group&hellip;</button>
+          <div class="share-title" style="padding:6px 10px 0">Their attempts come to</div>
+          <select class="replies-to" style="margin:4px 10px 6px;width:calc(100% - 20px);background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:6px 9px;border-radius:7px;font-size:.8rem">
+            <option value="sharer">me</option>
+            <option value="owner">{{ u.display_name }} (who made it)</option>
+          </select>
         {% else %}
         <button class="vbtn state-{{ 'public' if v.visibility == 'public' else 'private' }}">
           <span class="dot"></span><span class="vlabel">{{ 'Public' if v.visibility == 'public' else 'Private' }}</span><span class="caret">&#9662;</span>

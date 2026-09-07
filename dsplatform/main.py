@@ -62,6 +62,9 @@ def _migrate_grant_offers():
             if cols and "series_grant_id" not in cols:
                 conn.execute(text("ALTER TABLE grants ADD COLUMN series_grant_id INTEGER"))
                 print("grants: added series_grant_id", flush=True)
+            if cols and "replies_to" not in cols:
+                conn.execute(text("ALTER TABLE grants ADD COLUMN replies_to VARCHAR(8) DEFAULT 'sharer'"))
+                print("grants: added replies_to", flush=True)
             vcols = [row[1] for row in conn.execute(text("PRAGMA table_info(videos)"))]
             if vcols and "reply_to" not in vcols:
                 conn.execute(text("ALTER TABLE videos ADD COLUMN reply_to INTEGER"))
@@ -863,8 +866,11 @@ def add_grant(payload: dict, u: User = Depends(current_user),
 
     if v is not None and v.reply_to is not None:
         answered = db.get(Video, v.reply_to)
-        if answered and any(viewer.id != answered.user_id for viewer in viewers):
-            raise HTTPException(400, "An attempt at someone's video can only go back to them. "
+        via = db.execute(select(Grant).where(Grant.viewer_id == u.id, Grant.video_id == v.reply_to,
+                                             Grant.revoked_at.is_(None))).scalars().first() if answered else None
+        teacher = _teacher_for(via, answered) if answered else None
+        if teacher and any(viewer.id != teacher.id for viewer in viewers):
+            raise HTTPException(400, "An attempt at someone's video can only go back to your teacher. "
                                      "Record your own video to teach it.")
 
     if series is not None:
@@ -889,6 +895,12 @@ def add_grant(payload: dict, u: User = Depends(current_user),
                              "display_name": sg.viewer.display_name} for sg in made]}
 
     grants = [_grant(db, u, viewer, v, group) for viewer in viewers]
+    # Passing on someone else's video: say where the attempts should go.
+    replies_to = payload.get("replies_to") or "sharer"
+    if replies_to not in ("sharer", "owner"):
+        raise HTTPException(400, "replies_to must be sharer or owner")
+    for g in grants:
+        g.replies_to = replies_to
     db.commit()
     for g in grants:
         db.refresh(g)
@@ -915,6 +927,14 @@ def decline_share(grant_id: int, u: User = Depends(current_user),
 
 # ── my lessons online: attempts under the videos they answer ───────────────
 
+def _teacher_for(via: Grant | None, src: Video) -> User:
+    """Who an attempt at `src` goes to: the video's owner — unless it reached
+    the student through someone else who chose to receive the attempts."""
+    if via is None or via.owner_id == src.user_id or via.replies_to == "owner":
+        return src.user
+    return via.owner
+
+
 def _my_lessons(u: User, db: Session) -> list[dict]:
     """Every video this person has attempted, with their attempts under it,
     and whether each attempt has been sent to the video's owner."""
@@ -930,12 +950,13 @@ def _my_lessons(u: User, db: Session) -> list[dict]:
             # The share that brought the lesson: says which group it came through.
             via = db.execute(select(Grant).where(Grant.viewer_id == u.id, Grant.video_id == src.id,
                                                  Grant.revoked_at.is_(None))).scalars().first()
+            teacher = _teacher_for(via, src)
             entry = lessons[src.id] = {"lesson": _card(src),
-                                       "teacher": {"handle": src.user.handle, "display_name": src.user.display_name},
+                                       "teacher": {"handle": teacher.handle, "display_name": teacher.display_name},
                                        "group": ({"id": via.group_id, "name": via.group.name}
                                                  if via and via.group_id and via.group else None),
                                        "attempts": []}
-        sent = db.execute(select(Grant).where(Grant.owner_id == u.id, Grant.viewer_id == src.user_id,
+        sent = db.execute(select(Grant).where(Grant.owner_id == u.id, Grant.viewer_id == teacher.id,
                                               Grant.video_id == a.id, Grant.revoked_at.is_(None))).scalars().first()
         entry["attempts"].append(dict(_card(a), sent=sent is not None,
                                       sent_at=sent.created_at.isoformat() if sent else ""))
@@ -961,9 +982,10 @@ def send_attempt(attempt_id: int, u: User = Depends(current_user), db: Session =
     via = db.execute(select(Grant).where(Grant.viewer_id == u.id, Grant.video_id == src.id,
                                          Grant.revoked_at.is_(None))).scalars().first()
     group = via.group if via and via.group_id else None
-    g = _grant(db, u, src.user, a, group, accepted=True)
+    teacher = _teacher_for(via, src)
+    g = _grant(db, u, teacher, a, group, accepted=True)
     db.commit(); db.refresh(g)
-    return {"id": g.id, "to": src.user.handle, "group": group.name if group else None}
+    return {"id": g.id, "to": teacher.handle, "group": group.name if group else None}
 
 
 @app.get("/lessons", response_class=HTMLResponse)
