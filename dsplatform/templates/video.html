@@ -51,7 +51,6 @@
       <button id="play">Pause</button>
       <input id="scrub" type="range" min="0" value="0">
       <span class="fno" id="fno">0</span>
-      <label class="lbl">Turn <input id="yaw" type="range" min="-180" max="180" value="17" style="width:92px"></label>
       <label class="lbl">Speed <input id="spd" type="range" min="0.25" max="2" step="0.25" value="1" style="width:92px"></label>
     </div>
   </div>
@@ -110,7 +109,6 @@ document.getElementById('play').onclick = e => {
 document.getElementById('scrub').oninput = e => {
   sk.pause(); document.getElementById('play').textContent = 'Play'; sk.seek(+e.target.value);
 };
-document.getElementById('yaw').oninput = e => { sk.yaw = (+e.target.value)*Math.PI/180; sk.draw(); };
 if (!HASVID) {
   const chip = document.querySelector('button.layer[data-layer="skel"]');
   if (chip) chip.onclick = () => { const on = chip.classList.toggle('on'); sk.c.style.visibility = on ? 'visible' : 'hidden'; };
@@ -164,7 +162,7 @@ if (HASVID) {
   const c = document.getElementById('cv'); let drag=false, px=0;
   c.addEventListener('pointerdown', e => {drag=true; px=e.clientX; c.setPointerCapture(e.pointerId); c.classList.add('drag');});
   c.addEventListener('pointermove', e => {if(!drag)return; sk.yaw += (e.clientX-px)*0.01; px=e.clientX;
-    document.getElementById('yaw').value = Math.round(((sk.yaw*180/Math.PI+180)%360+360)%360-180); sk.draw();});
+    sk.draw();});
   const end=()=>{drag=false;c.classList.remove('drag');};
   c.addEventListener('pointerup',end); c.addEventListener('pointercancel',end);
 }
