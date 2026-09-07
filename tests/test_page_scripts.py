@@ -46,7 +46,9 @@ class _Video:
 
 
 def _scripts(template: str, **ctx) -> list[str]:
-    env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(TEMPLATES)))
+    # Autoescape on, as FastAPI's Jinja2Templates renders .html — an inline
+    # script with a quoted value is exactly where the two differ.
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(TEMPLATES)), autoescape=True)
     html = env.get_template(template).render(**ctx)
     return re.findall(r"<script>(.*?)</script>", html, re.S)
 

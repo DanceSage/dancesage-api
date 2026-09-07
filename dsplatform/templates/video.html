@@ -116,10 +116,10 @@
 {% endif %}
 {% endblock %}
 {% block js %}{% if lesson %}<script src="/static/replay.js?v=1"></script><script>
-fetch('/pose/{{ v.pose2d_key }}.json').then(r => r.json()).then(track => startReplay({
+fetch({{ ('/pose/' ~ v.pose2d_key ~ '.json')|tojson }}).then(r => r.json()).then(track => startReplay({
   root: 'replay', track: track, mirrored: {{ 'true' if v.mirrored else 'false' }},
-  teacherVideo: {{ ('"/video/' ~ lesson.video_key ~ '.mov"') if lesson.has_video else 'null' }},
-  youVideo: {{ ('"/video/' ~ v.video_key ~ '.mov"') if v.has_video else 'null' }}
+  teacherVideo: {{ (('/video/' ~ lesson.video_key ~ '.mov') if lesson.has_video else none)|tojson }},
+  youVideo: {{ (('/video/' ~ v.video_key ~ '.mov') if v.has_video else none)|tojson }}
 }));
 </script>{% else %}{% if can_share %}{% include '_vmenu_js.html' %}{% endif %}<script>
 const HASVID = {{ 'true' if v.has_video else 'false' }};
