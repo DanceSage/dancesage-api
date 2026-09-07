@@ -67,7 +67,7 @@ def post(base):
     token = os.environ.get("SAGE_TOKEN") or sys.exit("SAGE_TOKEN missing: run the account step first")
     me = _call(base, token, "GET", "/v1/me")
     have = {v["title"]: v["id"] for v in me.get("videos", [])}
-    series = {s["name"]: s for s in _call(base, token, "GET", "/v1/series")}
+    series = {s["name"]: s for s in _call(base, token, "GET", "/v1/series")["series"]}
     manifest = json.loads(MANIFEST.read_text())
     for dance in ("Salsa", "Bachata"):
         name = f"{dance} classes"
