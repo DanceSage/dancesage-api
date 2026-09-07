@@ -15,7 +15,7 @@ Two steps, because the account is made where the database is:
 Re-running "post" skips titles Sage already has, so it is safe to repeat.
 """
 import json, os, pathlib, sys
-import urllib.request
+import urllib.request, urllib.error
 
 HANDLE = "sage"
 PROFILE = dict(
@@ -26,6 +26,10 @@ PROFILE = dict(
         "salsa and bachata, one move at a time. Add a class to your lessons, dance it, "
         "send me your attempt.",
 )
+# A first, small set: enough to see how a teacher's course reads. The builder
+# made 38; the rest post the day the curriculum wants them.
+FIRST = {("Salsa", 101), ("Salsa", 102), ("Salsa", 106), ("Salsa", 109), ("Salsa", 111), ("Salsa", 116),
+         ("Bachata", 101), ("Bachata", 102), ("Bachata", 104), ("Bachata", 107)}
 MANIFEST = pathlib.Path("/Users/abduradi/Documents/dancesage/dancesage-research/rnd/sage_out/manifest.json")
 
 
@@ -59,8 +63,11 @@ def _call(base, token, method, path, data=None, form=None):
         req = urllib.request.Request(base + path, data=json.dumps(data).encode() if data is not None else None,
                                      method=method, headers={"Content-Type": "application/json"})
     req.add_header("Authorization", f"Bearer {token}")
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return json.loads(r.read() or b"{}")
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        sys.exit(f"{method} {path}: {e.code} {e.read().decode(errors='replace')[:400]}")
 
 
 def post(base):
@@ -75,6 +82,8 @@ def post(base):
             series[name] = _call(base, token, "POST", "/v1/series", {"name": name})
             print("series", name)
     for item in sorted(manifest, key=lambda m: (m["dance"], m["num"])):
+        if (item["dance"], item["num"]) not in FIRST:
+            continue
         sc = json.loads(pathlib.Path(item["file"]).read_text())
         if sc["title"] in have:
             vid = have[sc["title"]]
@@ -82,7 +91,9 @@ def post(base):
             r = _call(base, token, "POST", "/v1/videos", form={
                 "title": sc["title"], "note": sc["note"], "style": sc["style"], "level": sc["level"],
                 "fps": sc["fps"], "visibility": "public",
-                "pose3d": json.dumps({"j": sc["j"], "height": sc["height"], "centre": sc["centre"]}),
+                # millimetres are plenty; float32 artefacts would triple the size
+                "pose3d": json.dumps({"j": [[[[round(x, 3) for x in p] for p in fr] for fr in d] for d in sc["j"]],
+                                      "height": sc["height"], "centre": sc["centre"]}, separators=(",", ":")),
             })
             vid = r["id"]; have[sc["title"]] = vid
             print(f"posted {sc['title']} -> /v/{vid}")
