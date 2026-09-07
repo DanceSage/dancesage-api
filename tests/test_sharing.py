@@ -298,7 +298,7 @@ def test_a_group_has_a_wall_and_members_share_back():
 
     # The wall page: the teacher sees the reply; Leo sees the lesson and a way to share back.
     page = client.get(f"/g/{gid}", cookies={"ds_session": teacher}).text
-    assert "Enchufla — my attempt" in page and "Attempts" in page and "Other videos shared back" in page
+    assert "Enchufla — my attempt" in page and "1 attempt" in page and "1/2 accepted" in page
     page = client.get(f"/g/{gid}", cookies={"ds_session": leo}).text
     assert "Share back" in page and "Enchufla — my attempt" not in page
     assert client.get(f"/g/{gid}", cookies={"ds_session": other}).status_code == 404
