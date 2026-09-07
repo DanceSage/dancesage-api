@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ w.group.name }} · Dance Sage{% endblock %}
+{% block body %}
+<div class="who">
+  <div class="av ph">{{ w.group.name[0] }}</div>
+  <div class="info">
+    <h1>{{ w.group.name }}</h1>
+    <div class="loc">{% if w.group.mine %}your group &middot; {{ w.group.members|length }} members{% else %}from <a href="/@{{ w.group.owner.handle }}" style="color:var(--teal)">{{ w.group.owner.display_name }}</a>{% endif %}</div>
+    {% if w.group.mine %}<div style="color:var(--muted);font-size:.86rem">{% for m in w.group.members %}@{{ m.handle }}{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+    <div style="margin-top:10px"><a class="chip" href="/me">Back to your videos</a></div>
+  </div>
+</div>
+
+<h2 style="font-size:1.05rem;margin:0 0 4px">{% if w.group.mine %}What you shared with the group{% else %}Shared with the group{% endif %}</h2>
+<p class="sub" style="margin:0 0 14px">{% if w.group.mine %}Use Group share on any of your videos to add one.{% else %}Accept an offer on your page to watch it.{% endif %}</p>
+{% if w.lessons %}
+<div class="grid">
+  {% for v in w.lessons %}
+  <div class="card">
+    <a href="/v/{{ v.id }}"><canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas></a>
+    <div class="meta">
+      <div class="t">{{ v.title }}</div>
+      <div class="s">{{ (v.frames // v.fps) if v.fps else 0 }}s{% if v.has_video %} &middot; video{% endif %}</div>
+      {% if w.group.mine %}<ul class="share-who" style="margin-top:6px">{% for m in v.members %}<li style="{{ '' if m.accepted else 'opacity:.6' }}">@{{ m.handle }}{{ '' if m.accepted else ' · waiting' }}</li>{% endfor %}</ul>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}<p class="sub">Nothing yet.</p>{% endif %}
+
+<h2 style="font-size:1.05rem;margin:34px 0 4px">{% if w.group.mine %}Shared back by members{% else %}What you shared back{% endif %}</h2>
+{% if not w.group.mine %}
+<p class="sub" style="margin:0 0 10px">Share one of your videos with {{ w.group.owner.display_name }} through this group. No offer to accept — it just arrives, filed here.</p>
+<div class="share-row" style="max-width:520px;margin-bottom:16px">
+  <select id="own" style="flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:6px 9px;border-radius:7px;font-size:.8rem">
+    <option value="">choose one of your videos</option>
+    {% for v in own %}<option value="{{ v.id }}">{{ v.title }}</option>{% endfor %}
+  </select>
+  <button id="sharego" class="share-go" style="background:var(--gold);border:none;color:#241a06;font:600 .72rem var(--font-body);padding:6px 11px;border-radius:7px;cursor:pointer">Share back</button>
+</div>
+<div id="sharemsg" class="share-msg" style="font-size:.72rem;color:var(--rose);min-height:1em"></div>
+{% else %}
+<p class="sub" style="margin:0 0 14px">Members' videos, sent to you through this group. Only you see them.</p>
+{% endif %}
+{% if w.replies %}
+<div class="grid">
+  {% for v in w.replies %}
+  <div class="card">
+    <a href="/v/{{ v.id }}"><canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas></a>
+    <div class="meta">
+      <div class="t">{{ v.title }}</div>
+      <div class="s">from <a href="/@{{ v.by.handle }}" style="color:var(--teal)">{{ v.by.display_name }}</a> &middot; {{ (v.frames // v.fps) if v.fps else 0 }}s{% if v.has_video %} &middot; video{% endif %}{% if v.dancers > 1 %} &middot; two dancers{% endif %}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}<p class="sub">Nothing yet.</p>{% endif %}
+<style>
+  .share-who{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:5px}
+  .share-who li{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:.72rem}
+  .share-row{display:flex;gap:5px;align-items:center}
+</style>
+{% endblock %}
+{% block js %}<script>
+document.querySelectorAll('canvas[data-pose]').forEach(c=>{ new Skeleton(c,{yaw:0.3,still:true}).load(c.dataset.pose); });
+const go = document.getElementById('sharego');
+if (go) go.onclick = async () => {
+  const id = document.getElementById('own').value, msg = document.getElementById('sharemsg');
+  if (!id) { msg.textContent = 'Choose a video first.'; return; }
+  const r = await fetch('/v1/groups/{{ w.group.id }}/share', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ video_id: Number(id) })
+  });
+  if (r.ok) location.reload(); else msg.textContent = (await r.json()).detail || 'Could not share it.';
+};
+</script>{% endblock %}

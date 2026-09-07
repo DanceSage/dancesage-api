@@ -127,7 +127,7 @@ function drawGroups() {
   list.innerHTML = GROUPS.length ? '' : '<p class="sub" style="font-size:.85rem">No groups yet. Make one below, then add people to it.</p>';
   for (const g of GROUPS) {
     const box = document.createElement('div'); box.className = 'g';
-    box.innerHTML = `<div class="gn"><span>${g.name}</span><button class="del">Delete</button></div>
+    box.innerHTML = `<div class="gn"><span>${g.name} <a href="/g/${g.id}" style="color:var(--gold);font-weight:500;font-size:.78rem;margin-left:8px">open the wall →</a></span><button class="del">Delete</button></div>
       <ul class="members">${g.members.map(m => `<li>@${m.handle}<button title="Remove" data-h="${m.handle}">&times;</button></li>`).join('')
         || '<li style="opacity:.6;border:none;background:none;padding-left:0">nobody yet</li>'}</ul>
       <div class="addrow"><span style="color:var(--faint);font-size:.85rem">@</span><input placeholder="add a dancer's handle" autocapitalize="none" autocorrect="off"><button class="go add">Add</button></div>`;

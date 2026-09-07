@@ -290,3 +290,11 @@ def test_a_group_has_a_wall_and_members_share_back():
     assert client.get(f"/v1/groups/{gid}/wall", headers=hdr(other)).status_code == 404
     assert client.post(f"/v1/groups/{gid}/share", json={"video_id": lesson}, headers=hdr(teacher)).status_code == 400
     assert client.post(f"/v1/groups/{gid}/share", json={"video_id": lesson}, headers=hdr(leo)).status_code == 404
+
+    # The wall page: the teacher sees the reply; Leo sees the lesson and a way to share back.
+    page = client.get(f"/g/{gid}", cookies={"ds_session": teacher}).text
+    assert "Enchufla — my attempt" in page and "Shared back by members" in page
+    page = client.get(f"/g/{gid}", cookies={"ds_session": leo}).text
+    assert "Share back" in page and "Enchufla — my attempt" not in page
+    assert client.get(f"/g/{gid}", cookies={"ds_session": other}).status_code == 404
+    assert "Thursday salsa" in client.get("/me", cookies={"ds_session": leo}).text

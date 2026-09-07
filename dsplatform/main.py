@@ -511,10 +511,12 @@ def my_page(request: Request, u: User | None = Depends(optional_user),
     vids = sorted(u.videos, key=lambda v: v.created_at, reverse=True)
     shared_ids = {g.video_id for g in db.execute(select(Grant).where(
         Grant.owner_id == u.id, Grant.revoked_at.is_(None))).scalars().all()}
+    groups = list_groups(u, db)
     return templates.TemplateResponse(request, "me.html",
                                       {"u": u, "videos": vids, "shared_ids": shared_ids,
                                        "shared": _shared_with(u, db),
-                                       "offers": _shared_with(u, db, pending=True)})
+                                       "offers": _shared_with(u, db, pending=True),
+                                       "own_groups": groups["groups"], "member_of": groups["member_of"]})
 
 
 # ── browsing ───────────────────────────────────────────────────────────────
@@ -833,6 +835,18 @@ def group_wall(group_id: int, u: User = Depends(current_user), db: Session = Dep
                           mine=owner),
             "lessons": sorted(lessons.values(), key=lambda c: c["id"], reverse=True),
             "replies": replies}
+
+
+@app.get("/g/{group_id}", response_class=HTMLResponse)
+def group_page(group_id: int, request: Request, me: User | None = Depends(optional_user),
+               db: Session = Depends(get_db)):
+    """The group's wall, for its owner and its members."""
+    if not me:
+        return RedirectResponse("/signin", status_code=303)
+    wall = group_wall(group_id, me, db)
+    own_videos = sorted(me.videos, key=lambda v: v.created_at, reverse=True) if not wall["group"]["mine"] else []
+    return templates.TemplateResponse(request, "group.html",
+                                      {"w": wall, "own": own_videos})
 
 
 @app.post("/v1/groups/{group_id}/share")

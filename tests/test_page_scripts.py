@@ -65,7 +65,15 @@ def _run(scripts: list[str], tmp_path: pathlib.Path) -> None:
 def test_profile_page_scripts_run(tmp_path):
     me = _User()
     _run(_scripts("me.html", u=me, me=me, videos=[_Video(1)], shared_ids=set(),
-                  shared=[], offers=[], offer_count=0), tmp_path)
+                  shared=[], offers=[], offer_count=0, own_groups=[], member_of=[]), tmp_path)
+
+
+def test_group_page_scripts_run(tmp_path):
+    me = _User()
+    w = {"group": {"id": 1, "name": "G", "mine": False, "members": [],
+                   "owner": {"handle": "t", "display_name": "T"}},
+         "lessons": [], "replies": []}
+    _run(_scripts("group.html", w=w, own=[_Video(1)], me=me, offer_count=0), tmp_path)
 
 
 def test_video_page_scripts_run_for_the_owner(tmp_path):
