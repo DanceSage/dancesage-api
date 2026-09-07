@@ -105,7 +105,7 @@
     root.innerHTML = `
       <div class="rp-pills">
         <span class="rp-group"><button data-mode="overlaid" class="on">Overlaid</button><button data-mode="side">Side by side</button></span>
-        <span class="rp-group"><button data-layer="teacher" class="on"><i style="background:${TEACHER[0]}"></i>Teacher</button><button data-layer="you" class="on"><i style="background:#4ade80"></i>You</button><button data-layer="video" class="on"><i style="background:#fff"></i>Video</button></span>
+        <span class="rp-group"><button data-layer="teacher" class="on"><i style="background:${TEACHER[0]}"></i>Teacher</button><button data-layer="you" class="on"><i style="background:#4ade80"></i>You</button><button data-layer="video" class="on" hidden><i style="background:#fff"></i>Video</button></span>
       </div>
       <div class="rp-stage rp-overlaid"><div class="rp-panel"><canvas class="rp-c" data-side="both"></canvas></div></div>
       <div class="rp-stage rp-side" hidden>
@@ -196,6 +196,7 @@
     $$('button[data-mode]').forEach(b => b.onclick = () => {
       state.mode = b.dataset.mode; $$('button[data-mode]').forEach(x => x.classList.toggle('on', x === b));
       $('.rp-overlaid').hidden = state.mode !== 'overlaid'; $('.rp-side').hidden = state.mode !== 'side';
+      $('button[data-layer="video"]').hidden = state.mode !== 'side';
     });
     $$('button[data-layer]').forEach(b => b.onclick = () => { state[b.dataset.layer] = !state[b.dataset.layer]; b.classList.toggle('on', state[b.dataset.layer]); });
     $('.rp-play').onclick = e => { state.playing = !state.playing; e.currentTarget.innerHTML = state.playing ? '&#10074;&#10074;' : '&#9654;'; };

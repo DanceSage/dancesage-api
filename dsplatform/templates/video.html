@@ -42,6 +42,7 @@
   .rp-group button i{display:inline-block;width:8px;height:8px;border-radius:50%;opacity:.35}
   .rp-group button.on i{opacity:1}
   .rp-stage{display:flex;gap:6px;justify-content:center}
+  .rp-stage[hidden],.rp-group button[hidden]{display:none}
   .rp-panel{position:relative;aspect-ratio:9/16;max-height:72vh;flex:1;min-width:0;background:var(--panel2);border-radius:12px;overflow:hidden}
   .rp-overlaid .rp-panel{flex:none;width:min(100%,calc(72vh*9/16))}
   .rp-panel video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform-origin:center}
