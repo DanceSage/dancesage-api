@@ -28,6 +28,33 @@
   .sharebox{display:none;padding:6px 4px 2px;border-top:1px solid rgba(255,255,255,.10);
     margin-top:5px}
   .sharebox.open{display:block}
+  .share-title{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:2px 0 4px}
+  .share-manage{display:inline-block;font-size:.74rem;color:var(--gold);margin-top:7px}
+  .share-row select{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);
+    color:var(--text);padding:6px 9px;border-radius:7px;font-size:.8rem}
+  /* The groups window: make one, add people, take people out. */
+  #groupsDlg{background:#14181b;color:var(--text);border:1px solid rgba(255,255,255,.14);
+    border-radius:14px;padding:18px 20px;width:min(440px,92vw)}
+  #groupsDlg::backdrop{background:rgba(0,0,0,.6)}
+  #groupsDlg h3{margin:0 0 12px;font-size:1rem}
+  #groupsDlg .g{border:1px solid var(--line);border-radius:11px;padding:10px 12px;margin-bottom:9px}
+  #groupsDlg .g .gn{display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:.92rem}
+  #groupsDlg .g .gn button{background:none;border:none;color:var(--rose);cursor:pointer;font:600 .72rem var(--mono);text-transform:uppercase}
+  #groupsDlg .members{list-style:none;margin:7px 0 6px;padding:0;display:flex;flex-wrap:wrap;gap:5px}
+  #groupsDlg .members li{display:flex;align-items:center;gap:5px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:999px;padding:3px 5px 3px 9px;font-size:.74rem}
+  #groupsDlg .members li button{background:none;border:none;color:var(--rose);cursor:pointer;padding:0 3px}
+  #groupsDlg .addrow,#groupsDlg .newrow{display:flex;gap:5px;align-items:center}
+  #groupsDlg input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);
+    color:var(--text);padding:6px 9px;border-radius:7px;font-size:.8rem}
+  #groupsDlg .go{background:var(--gold);border:none;color:#241a06;font:600 .72rem var(--font-body);
+    padding:6px 11px;border-radius:7px;cursor:pointer;flex:none}
+  #groupsDlg .newrow{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+  #groupsDlg .msg{font-size:.72rem;color:var(--rose);min-height:1em;margin-top:6px}
+  #groupsDlg .close{margin-top:12px;background:none;border:1px solid var(--line);color:var(--text);
+    padding:6px 12px;border-radius:7px;cursor:pointer;font-size:.8rem}
+  .share-row select{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);
+    color:var(--text);padding:6px 9px;border-radius:7px;font-size:.8rem}
   .share-row{display:flex;gap:5px;align-items:center}
   .share-row .at{color:var(--faint);font-size:.85rem}
   .share-row input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);

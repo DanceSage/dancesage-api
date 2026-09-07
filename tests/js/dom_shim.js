@@ -8,7 +8,10 @@ const el = (extra = {}) => {
   return e;
 };
 const menu = el();
+const dialog = () => Object.assign(el(), { open: false, showModal(){ this.open = true; }, close(){ this.open = false; } });
 global.document = {
+  createElement(tag){ return tag === 'dialog' ? dialog() : el(); },
+  body: el(),
   querySelectorAll(sel){ return sel === '.vmenu' ? [menu] : sel === 'canvas[data-pose]' ? [el()] : []; },
   querySelector(){ return el(); }, getElementById(){ return el(); }, addEventListener(){},
 };

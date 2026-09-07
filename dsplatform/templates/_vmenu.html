@@ -12,16 +12,18 @@
           <button class="vshare">Share&hellip;</button>
           <button class="vdel">Delete</button>
           <div class="sharebox">
+            <div class="share-title">Share with a dancer</div>
             <div class="share-row">
-              <span class="at">@</span><input placeholder="a dancer's handle"
+              <span class="at">@</span><input placeholder="their handle"
                 autocapitalize="none" autocorrect="off">
               <button class="share-go">Share</button>
             </div>
-            <div class="share-row share-group" style="margin-top:6px">
-              <select class="share-pick"><option value="">a group&hellip;</option></select>
+            <div class="share-title" style="margin-top:9px">Group share</div>
+            <div class="share-row share-group">
+              <select class="share-pick"><option value="">choose a group</option></select>
               <button class="share-go share-go-group">Share</button>
-              <button class="share-go share-new-group" title="New group">+</button>
             </div>
+            <a href="#" class="share-manage">Manage groups&hellip;</a>
             <div class="share-msg"></div>
             <ul class="share-who"></ul>
           </div>

@@ -83,28 +83,17 @@ document.querySelectorAll('.vmenu').forEach(menu => {
   input.addEventListener('keydown', e => { if (e.key === 'Enter') addPerson(); });
 
   function offerGroups() {
-    pick.innerHTML = '<option value="">a group…</option>'
-      + GROUPS.map(g => `<option value="${g.id}">${g.name} (${g.members.length})</option>`).join('');
+    const keep = pick.value;
+    pick.innerHTML = '<option value="">choose a group</option>'
+      + GROUPS.map(g => `<option value="${g.id}">${g.name} · ${g.members.length}</option>`).join('');
+    pick.value = keep;
   }
   groupOffers.push(offerGroups);
   menu.querySelector('.share-go-group').onclick = () => {
-    if (!pick.value) { msg.textContent = GROUPS.length ? 'Pick a group.' : 'No groups yet — press + to make one.'; return; }
+    if (!pick.value) { msg.textContent = GROUPS.length ? 'Choose a group first.' : 'No groups yet — Manage groups… to make one.'; return; }
     shareWith({ group_id: Number(pick.value) });
   };
-  menu.querySelector('.share-new-group').onclick = async () => {
-    const name = prompt('Name for the group (a class, a team):');
-    if (!name) return;
-    const raw = prompt('Their handles, separated by commas:') || '';
-    const handles = raw.split(/[,\s]+/).map(h => h.replace(/^@/, '')).filter(Boolean);
-    const r = await fetch('/v1/groups', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, handles })
-    });
-    if (!r.ok) { msg.textContent = (await r.json()).detail || 'Could not create the group.'; return; }
-    const g = await r.json();
-    await loadGroups();
-    pick.value = String(g.id);
-  };
+  menu.querySelector('.share-manage').onclick = e => { e.preventDefault(); openGroups(); };
 
   // deletion
   menu.querySelector('.vdel').onclick = async () => {
@@ -117,12 +106,62 @@ document.querySelectorAll('.vmenu').forEach(menu => {
   };
 });
 
+// ── the groups window: make one, add people, take people out ───────────────
+const dlg = document.createElement('dialog');
+dlg.id = 'groupsDlg';
+dlg.innerHTML = `<h3>Groups</h3><div class="list"></div>
+  <div class="newrow"><input class="newname" placeholder="New group — a name, e.g. Tuesday bachata"><button class="go newgo">Create</button></div>
+  <div class="msg"></div><button class="close">Done</button>`;
+document.body.appendChild(dlg);
+dlg.querySelector('.close').onclick = () => dlg.close();
+dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+const dmsg = dlg.querySelector('.msg');
+async function call(url, method, body) {
+  const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' },
+                               body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) { dmsg.textContent = (await r.json()).detail || 'That did not work.'; return false; }
+  dmsg.textContent = ''; return true;
+}
+function drawGroups() {
+  const list = dlg.querySelector('.list');
+  list.innerHTML = GROUPS.length ? '' : '<p class="sub" style="font-size:.85rem">No groups yet. Make one below, then add people to it.</p>';
+  for (const g of GROUPS) {
+    const box = document.createElement('div'); box.className = 'g';
+    box.innerHTML = `<div class="gn"><span>${g.name}</span><button class="del">Delete</button></div>
+      <ul class="members">${g.members.map(m => `<li>@${m.handle}<button title="Remove" data-h="${m.handle}">&times;</button></li>`).join('')
+        || '<li style="opacity:.6;border:none;background:none;padding-left:0">nobody yet</li>'}</ul>
+      <div class="addrow"><span style="color:var(--faint);font-size:.85rem">@</span><input placeholder="add a dancer's handle" autocapitalize="none" autocorrect="off"><button class="go add">Add</button></div>`;
+    const input = box.querySelector('.addrow input');
+    const add = async () => {
+      const h = input.value.trim().replace(/^@/, ''); if (!h) return;
+      if (await call(`/v1/groups/${g.id}/members`, 'POST', { handle: h })) { input.value = ''; await loadGroups(); }
+    };
+    box.querySelector('.add').onclick = add;
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+    box.querySelectorAll('.members button[data-h]').forEach(b => b.onclick = async () => {
+      if (await call(`/v1/groups/${g.id}/members/${b.dataset.h}`, 'DELETE')) await loadGroups();
+    });
+    box.querySelector('.del').onclick = async () => {
+      if (!confirm(`Delete the group “${g.name}”? Nothing already shared is taken back.`)) return;
+      if (await call(`/v1/groups/${g.id}`, 'DELETE')) await loadGroups();
+    };
+    list.appendChild(box);
+  }
+}
+dlg.querySelector('.newgo').onclick = async () => {
+  const name = dlg.querySelector('.newname').value.trim();
+  if (!name) { dmsg.textContent = 'Give the group a name.'; return; }
+  if (await call('/v1/groups', 'POST', { name, handles: [] })) { dlg.querySelector('.newname').value = ''; await loadGroups(); }
+};
+function openGroups() { drawGroups(); dlg.showModal(); }
+
 // ── groups: loaded once, offered to every menu ─────────────────────────────
 async function loadGroups() {
   const r = await fetch('/v1/groups');
   if (!r.ok) return;
   GROUPS = (await r.json()).groups;
   groupOffers.forEach(f => f());
+  if (dlg.open) drawGroups();
   if (window.renderGroups) window.renderGroups(GROUPS);
 }
 loadGroups();
