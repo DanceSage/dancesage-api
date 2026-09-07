@@ -419,3 +419,19 @@ def test_a_series_is_a_standing_offer_that_stays_live():
     assert client.get("/v1/series", headers=hdr(teacher)).json()["series"] == []
     # …and the videos themselves are untouched.
     assert len(client.get("/v1/me", headers=hdr(teacher)).json()["videos"]) == 3
+
+
+def test_series_on_the_pages():
+    teacher, maya = _user("pgteach"), _user("pgmaya")
+    hdr = lambda t: {"Authorization": f"Bearer {t}"}
+    basic = _post(teacher, "Salsa basic", "private")
+    sid = client.post("/v1/series", json={"name": "Friday", "video_ids": [basic]}, headers=hdr(teacher)).json()["id"]
+    client.post("/v1/grants", json={"series_id": sid, "handle": "pgmaya"}, headers=hdr(teacher))
+    page = client.get("/me", cookies={"ds_session": teacher}).text
+    assert 'data-series="%d"' % sid in page and "Share series" in page and "Add to series" in page
+    page = client.get("/me", cookies={"ds_session": maya}).text
+    assert "shared the series “Friday” with you" in page
+    for s_ in client.get("/v1/shared", headers=hdr(maya)).json()["series_offers"]:
+        client.post(f"/v1/shared/series/{s_['series_grant_id']}/accept", headers=hdr(maya))
+    page = client.get("/me", cookies={"ds_session": maya}).text
+    assert "Series shared with you" in page and "series “Friday”" in page

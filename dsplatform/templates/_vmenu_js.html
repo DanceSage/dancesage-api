@@ -5,6 +5,8 @@
 const LABEL = { public: 'Public', private: 'Private' };
 let GROUPS = [];
 const groupOffers = [];
+let SERIES = [];
+const seriesOffers = [];
 
 document.querySelectorAll('.vmenu').forEach(menu => {
   const id     = menu.dataset.video;
@@ -95,6 +97,28 @@ document.querySelectorAll('.vmenu').forEach(menu => {
   };
   menu.querySelector('.share-manage').onclick = e => { e.preventDefault(); openGroups(); };
 
+  // put it in a series — owners only
+  const fileBtn = menu.querySelector('.vfile');
+  const fileBox = menu.querySelector('.filebox');
+  if (fileBtn && fileBox) {
+    const filePick = fileBox.querySelector('.file-pick');
+    const fileMsg = fileBox.querySelector('.file-msg');
+    function offerSeries() {
+      filePick.innerHTML = '<option value="">choose a series</option>'
+        + SERIES.map(s => `<option value="${s.id}">${s.name} · ${s.video_count}</option>`).join('');
+    }
+    seriesOffers.push(offerSeries);
+    fileBtn.onclick = () => fileBox.classList.toggle('open');
+    fileBox.querySelector('.file-go').onclick = async () => {
+      if (!filePick.value) { fileMsg.textContent = SERIES.length ? 'Choose a series.' : 'No series yet — “+ New series” at the top of your videos.'; return; }
+      const r = await fetch(`/v1/series/${filePick.value}/videos`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_id: Number(id) })
+      });
+      if (r.ok) location.reload(); else fileMsg.textContent = (await r.json()).detail || 'Could not add it.';
+    };
+  }
+
   // deletion — owners only
   const del = menu.querySelector('.vdel');
   if (del) del.onclick = async () => {
@@ -156,11 +180,57 @@ dlg.querySelector('.newgo').onclick = async () => {
 };
 function openGroups() { drawGroups(); dlg.showModal(); }
 
+// ── series: loaded once, offered to every menu; folders on the profile ─────
+async function loadSeries() {
+  const r = await fetch('/v1/series');
+  if (!r.ok) return;
+  SERIES = (await r.json()).series || [];
+  seriesOffers.forEach(f => f());
+}
+loadSeries();
+
+document.querySelectorAll('details.series').forEach(box => {
+  const sid = box.dataset.series;
+  const panel = box.querySelector('.sseries');
+  const msg = box.querySelector('.share-msg');
+  const pick = box.querySelector('.share-pick');
+  box.querySelector('.sshare').onclick = e => { e.preventDefault(); e.stopPropagation(); panel.classList.toggle('open'); };
+  groupOffers.push(() => {
+    pick.innerHTML = '<option value="">choose a group</option>' + GROUPS.map(g => `<option value="${g.id}">${g.name} · ${g.members.length}</option>`).join('');
+  });
+  async function share(body) {
+    msg.textContent = '';
+    const r = await fetch('/v1/grants', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ series_id: Number(sid) }, body)) });
+    if (r.ok) location.reload(); else msg.textContent = (await r.json()).detail || 'Could not share it.';
+  }
+  box.querySelector('.sgo').onclick = () => { const h = box.querySelector('.sseries input').value.trim().replace(/^@/, ''); if (h) share({ handle: h }); };
+  box.querySelector('.sgo-group').onclick = () => { if (!pick.value) { msg.textContent = 'Choose a group.'; return; } share({ group_id: Number(pick.value) }); };
+  box.querySelectorAll('li[data-sg] button').forEach(b => b.onclick = async () => {
+    await fetch(`/v1/series/grants/${b.parentElement.dataset.sg}`, { method: 'DELETE' }); location.reload();
+  });
+  box.querySelectorAll('.unfile').forEach(b => b.onclick = async () => {
+    await fetch(`/v1/series/${sid}/videos/${b.dataset.video}`, { method: 'DELETE' }); location.reload();
+  });
+  box.querySelector('.sdel').onclick = async e => {
+    e.preventDefault(); e.stopPropagation();
+    if (!confirm(`Delete the series “${box.dataset.name}”?\n\nEveryone it was shared with loses those videos. The videos themselves stay.`)) return;
+    await fetch(`/v1/series/${sid}`, { method: 'DELETE' }); location.reload();
+  };
+});
+const newSeries = document.getElementById('newseries');
+if (newSeries) newSeries.onclick = async () => {
+  const name = prompt('Name for the series — a class, a course, a term:');
+  if (!name) return;
+  const r = await fetch('/v1/series', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+  if (r.ok) location.reload(); else alert((await r.json()).detail || 'Could not create it.');
+};
+
 // ── groups: loaded once, offered to every menu ─────────────────────────────
 async function loadGroups() {
   const r = await fetch('/v1/groups');
   if (!r.ok) return;
-  GROUPS = (await r.json()).groups;
+  GROUPS = (await r.json()).groups || [];
   groupOffers.forEach(f => f());
   if (dlg.open) drawGroups();
   if (window.renderGroups) window.renderGroups(GROUPS);

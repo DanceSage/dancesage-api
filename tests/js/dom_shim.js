@@ -16,7 +16,7 @@ global.document = {
   querySelector(){ return el(); }, getElementById(){ return el(); }, addEventListener(){},
 };
 global.window = global; global.location = { reload(){}, href: '' };
-global.fetch = async () => ({ ok: true, json: async () => ({ grants: [], groups: [] }) });
+global.fetch = async () => ({ ok: true, json: async () => ({ grants: [], groups: [], series: [], series_grants: [] }) });
 // Enough of the renderer for the video page: a canvas, a clock, a loaded track.
 global.Skeleton = class {
   constructor(){ this.c = el(); this.hidden = new Set(); this.data = { frames: 1, fps: 15, j: [[]] }; this.f = 0; this.playing = false; this.yaw = 0; }

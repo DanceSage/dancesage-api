@@ -538,10 +538,16 @@ def my_page(request: Request, u: User | None = Depends(optional_user),
     shared_ids = {g.video_id for g in db.execute(select(Grant).where(
         Grant.owner_id == u.id, Grant.revoked_at.is_(None))).scalars().all()}
     groups = list_groups(u, db)
+    series = [_series_card(s, for_owner=True) for s in
+              db.execute(select(Series).where(Series.owner_id == u.id).order_by(Series.created_at)).scalars().all()]
+    in_series = {v["id"] for s in series for v in s["videos"]}
     return templates.TemplateResponse(request, "me.html",
                                       {"u": u, "videos": vids, "shared_ids": shared_ids,
+                                       "series": series, "in_series": in_series,
                                        "shared": _shared_with(u, db),
                                        "offers": _shared_with(u, db, pending=True),
+                                       "series_offers": _series_offers(u, db, pending=True),
+                                       "series_in": _series_offers(u, db, pending=False),
                                        "own_groups": groups["groups"], "member_of": groups["member_of"]})
 
 

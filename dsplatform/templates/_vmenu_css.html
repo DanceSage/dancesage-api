@@ -55,6 +55,19 @@
     padding:6px 12px;border-radius:7px;cursor:pointer;font-size:.8rem}
   .share-row select{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);
     color:var(--text);padding:6px 9px;border-radius:7px;font-size:.8rem}
+  .filebox{display:none;padding:6px 4px 2px;border-top:1px solid rgba(255,255,255,.10);margin-top:5px}
+  .filebox.open{display:block}
+  .series{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:0 16px;margin:0 0 14px}
+  .series summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:13px 0}
+  .series summary::-webkit-details-marker{display:none}
+  .series summary::before{content:"▸";color:var(--gold);font-size:.9rem;transition:transform .15s}
+  .series[open] summary::before{transform:rotate(90deg)}
+  .series .ttl{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .series .cnt{color:var(--muted);font-size:.78rem;white-space:nowrap}
+  .series .sact{display:flex;gap:6px}
+  .series .sseries{display:none;margin:0 0 12px;padding:10px 12px;border:1px solid var(--line);border-radius:11px}
+  .series .sseries.open{display:block}
+  .series .grid{margin-bottom:12px}
   .share-row{display:flex;gap:5px;align-items:center}
   .share-row .at{color:var(--faint);font-size:.85rem}
   .share-row input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);

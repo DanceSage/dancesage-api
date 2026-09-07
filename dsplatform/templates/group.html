@@ -14,6 +14,20 @@
 {# The wall as a tree: the group, each video, and under it the attempts that
    came back. A video folds open; that is the whole navigation. #}
 <div class="tree">
+  {% for sr in w.series %}
+  <div class="series-head">{{ sr.name }} <span class="cnt">series &middot; {{ sr.videos|length }} video{{ '' if sr.videos|length == 1 else 's' }}</span></div>
+  {% for v in sr.videos %}
+  <details class="lesson" style="margin-left:18px">
+    <summary>
+      <span class="ttl">{{ v.title }}</span>
+      <span class="cnt">{% if w.group.mine %}{{ v.replies|length }} attempt{{ '' if v.replies|length == 1 else 's' }} &middot; {{ v.members|selectattr('accepted')|list|length }}/{{ v.members|length }} accepted{% else %}{{ v.replies|length }} of yours{% endif %}</span>
+      <a class="watch" href="/v/{{ v.id }}">watch</a>
+    </summary>
+    {% if v.replies %}<ul class="attempts">{% for r in v.replies %}<li><a href="/v/{{ r.id }}"><b>{{ r.by.display_name }}</b> &middot; {{ r.title }}</a></li>{% endfor %}</ul>
+    {% else %}<p class="none">{% if w.group.mine %}No attempts yet.{% else %}You have not shared an attempt at this one yet.{% endif %}</p>{% endif %}
+  </details>
+  {% endfor %}
+  {% endfor %}
   {% for v in w.lessons %}
   <details class="lesson" {% if loop.first %}open{% endif %}>
     <summary>
@@ -32,9 +46,10 @@
     </ul>
     {% else %}<p class="none">{% if w.group.mine %}No attempts yet.{% else %}You have not shared an attempt at this one yet.{% endif %}</p>{% endif %}
   </details>
-  {% else %}
-  <p class="sub">{% if w.group.mine %}Nothing shared with the group yet — use Group share on one of your videos.{% else %}Nothing shared with the group yet.{% endif %}</p>
   {% endfor %}
+  {% if not w.lessons and not w.series %}
+  <p class="sub">{% if w.group.mine %}Nothing shared with the group yet — use Group share on one of your videos, or share a series.{% else %}Nothing shared with the group yet.{% endif %}</p>
+  {% endif %}
 </div>
 
 {% if not w.group.mine %}
@@ -60,6 +75,8 @@
 {% endif %}
 <style>
   .tree{max-width:720px}
+  .series-head{font-weight:700;margin:14px 0 8px;display:flex;align-items:center;gap:10px}
+  .series-head .cnt{font-weight:400}
   .lesson{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:0 16px;margin-bottom:10px}
   .lesson summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:13px 0}
   .lesson summary::-webkit-details-marker{display:none}

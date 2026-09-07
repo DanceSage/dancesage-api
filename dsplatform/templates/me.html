@@ -16,9 +16,17 @@
   </div>
 </div>
 
-{% if offers %}
+{% if offers or series_offers %}
 {# A share is an offer. Say who, say what, ask for a yes or a no. #}
 <ul class="glist" style="max-width:640px;margin:0 0 28px">
+  {% for s in series_offers %}
+  <li data-series-offer="{{ s.series_grant_id }}" style="border-color:rgba(245,208,111,.45)">
+    <span class="gwho"><span class="gname">{{ s.owner.display_name }} shared the series “{{ s.name }}” with you</span>
+      <div class="gscope">{{ s.video_count }} video{{ '' if s.video_count == 1 else 's' }} now, and every one added later{% if s.group %} &middot; via {{ s.group.name }}{% endif %}</div></span>
+    <button class="grm accept" style="color:#3ad6b0">Accept</button>
+    <button class="grm decline">Decline</button>
+  </li>
+  {% endfor %}
   {% for who in offers %}{% for v in who.videos %}
   <li data-offer="{{ v.grant_id }}" style="border-color:rgba(245,208,111,.45)">
     <span class="gwho"><span class="gname">{{ who.display_name }} shared a video with you</span>
@@ -30,6 +38,42 @@
 </ul>
 {% endif %}
 
+<div style="display:flex;align-items:center;justify-content:space-between;margin:6px 0 10px">
+  <h2 style="font-size:1.05rem;margin:0">My videos</h2>
+  <button id="newseries" class="grm" style="color:var(--gold)">+ New series</button>
+</div>
+{% for s in series %}
+<details class="series" open data-series="{{ s.id }}" data-name="{{ s.name }}">
+  <summary>
+    <span class="ttl">{{ s.name }}</span>
+    <span class="cnt">{{ s.video_count }} video{{ '' if s.video_count == 1 else 's' }}{% if s.shared_with %} &middot; shared with {{ s.shared_with|length }}{% endif %}</span>
+    <span class="sact">
+      <button class="grm sshare" style="color:var(--gold)">Share series</button>
+      <button class="grm sdel">Delete</button>
+    </span>
+  </summary>
+  <div class="sharebox sseries">
+    <div class="share-title">Share the whole series — every video in it, and every one added later</div>
+    <div class="share-row"><span class="at">@</span><input placeholder="their handle" autocapitalize="none" autocorrect="off"><button class="share-go sgo">Share</button></div>
+    <div class="share-row share-group" style="margin-top:6px"><select class="share-pick"><option value="">choose a group</option></select><button class="share-go sgo-group">Share</button></div>
+    <div class="share-msg"></div>
+    <ul class="share-who">{% for w in s.shared_with %}<li data-sg="{{ w.grant_id }}" style="{{ '' if w.accepted else 'opacity:.6' }}">@{{ w.handle }}{{ '' if w.accepted else ' · waiting' }}<button title="Revoke">&times;</button></li>{% endfor %}</ul>
+  </div>
+  <div class="grid">
+    {% for v in s.videos %}
+    <div class="card" data-in-series="{{ s.id }}">
+      <a href="/v/{{ v.id }}"><canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas></a>
+      <div class="meta">
+        <div class="t">{{ v.title }}</div>
+        <div class="s">{{ (v.frames // v.fps) if v.fps else 0 }}s{% if v.has_video %} &middot; video{% endif %}
+          <button class="unfile" data-video="{{ v.id }}" title="Take out of this series" style="background:none;border:none;color:var(--rose);cursor:pointer;font-size:.72rem">remove</button></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% if not s.videos %}<p class="sub" style="margin:4px 0 12px">Empty. Use “Add to series” on a video below.</p>{% endif %}
+</details>
+{% endfor %}
 <div class="grid">
   {% for v in videos %}
   <div class="card">
@@ -52,6 +96,14 @@
   {% for g in member_of %}<li><span class="gwho"><span class="gname">{{ g.name }}</span><div class="gscope">from {{ g.owner.display_name }}</div></span><a class="grm" href="/g/{{ g.id }}" style="color:var(--gold)">Open</a></li>{% endfor %}
 </ul>
 {% endif %}
+{% if series_in %}
+<h2 style="font-size:1.05rem;margin:38px 0 4px">Series shared with you</h2>
+<ul class="glist" style="max-width:640px;margin:0 0 10px">
+  {% for s in series_in %}
+  <li data-series-in="{{ s.series_grant_id }}"><span class="gwho"><span class="gname">{{ s.name }}</span><div class="gscope">from {{ s.owner.display_name }} &middot; {{ s.video_count }} video{{ '' if s.video_count == 1 else 's' }}, and every one added later</div></span><button class="grm stopseries">Stop</button></li>
+  {% endfor %}
+</ul>
+{% endif %}
 {% if shared %}
 <h2 style="font-size:1.05rem;margin:38px 0 4px">Shared with you</h2>
 <p class="sub" style="margin:0 0 14px">Videos other dancers shared with you. Stop one and it leaves this page.</p>
@@ -61,7 +113,7 @@
     <a href="/v/{{ v.id }}"><canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas></a>
     <div class="meta">
       <div class="t">{{ v.title }}</div>
-      <div class="s">from <a href="/@{{ who.handle }}" style="color:var(--teal)">{{ who.display_name }}</a>
+      <div class="s">from <a href="/@{{ who.handle }}" style="color:var(--teal)">{{ who.display_name }}</a>{% if v.series %} &middot; series “{{ v.series.name }}”{% endif %}
         &middot; {{ (v.frames // v.fps) if v.fps else 0 }}s{% if v.has_video %} &middot; video{% endif %}{% if v.dancers > 1 %} &middot; two dancers{% endif %}</div>
       <button class="decline" style="margin-top:8px;background:none;border:1px solid var(--line);color:var(--rose);border-radius:999px;padding:4px 11px;font:600 .74rem var(--font-body);cursor:pointer">Stop</button>
     </div>
@@ -75,6 +127,16 @@
 document.querySelectorAll('canvas[data-pose]').forEach(c=>{ new Skeleton(c,{yaw:0.3,still:true}).load(c.dataset.pose); });
 
 // ── offers: yes or no; shares: stop ────────────────────────────────────────
+document.querySelectorAll('li[data-series-offer]').forEach(li => {
+  li.querySelector('.accept').onclick = async () => {
+    const r = await fetch(`/v1/shared/series/${li.dataset.seriesOffer}/accept`, { method: 'POST' });
+    if (r.ok) location.reload(); else alert('Could not accept that one.');
+  };
+  li.querySelector('.decline').onclick = async () => {
+    const r = await fetch(`/v1/shared/series/${li.dataset.seriesOffer}`, { method: 'DELETE' });
+    if (r.ok) location.reload(); else alert('Could not decline that one.');
+  };
+});
 document.querySelectorAll('li[data-offer]').forEach(li => {
   li.querySelector('.accept').onclick = async () => {
     const r = await fetch(`/v1/shared/${li.dataset.offer}/accept`, { method: 'POST' });
@@ -83,6 +145,13 @@ document.querySelectorAll('li[data-offer]').forEach(li => {
   li.querySelector('.decline').onclick = async () => {
     const r = await fetch(`/v1/shared/${li.dataset.offer}`, { method: 'DELETE' });
     if (r.ok) location.reload(); else alert('Could not decline that one.');
+  };
+});
+document.querySelectorAll('li[data-series-in] .stopseries').forEach(b => {
+  b.onclick = async () => {
+    if (!confirm('Stop this series? Every video it brought you goes with it.')) return;
+    const r = await fetch(`/v1/shared/series/${b.parentElement.dataset.seriesIn}`, { method: 'DELETE' });
+    if (r.ok) location.reload(); else alert('Could not stop that one.');
   };
 });
 document.querySelectorAll('.card[data-grant] .decline').forEach(b => {
