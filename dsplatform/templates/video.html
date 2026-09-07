@@ -22,36 +22,31 @@
   .fno{font-family:var(--mono);font-size:.8rem;color:var(--muted);min-width:74px}
   .lbl{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;
     display:flex;align-items:center;gap:7px;white-space:nowrap}
+  /* The switches over the picture: one pill per layer, lit in its own colour. */
+  .layer,.dancer{min-width:0!important;padding:5px 12px!important;border-radius:999px!important;
+    background:transparent!important;border:1px solid var(--line)!important;color:var(--muted)!important;
+    font:600 .8rem var(--font-body)!important;display:inline-flex;align-items:center;gap:7px}
+  .layer.on,.dancer.on{color:var(--text)!important;border-color:rgba(255,255,255,.35)!important;background:rgba(255,255,255,.07)!important}
+  .layer .dot,.dancer .dot{width:8px;height:8px;border-radius:50%;display:inline-block;opacity:.35}
+  .layer.on .dot,.dancer.on .dot{opacity:1}
   .two{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:20px;align-items:start}
   @media(max-width:860px){.two{grid-template-columns:1fr}}
 </style>
 <div class="two">
   <div class="player">
+    <div class="ctl" style="margin:0 0 10px">
+      {% if v.has_video %}<button class="layer on" data-layer="video"><span class="dot" style="background:#fff"></span>Video</button>{% endif %}
+      <button class="layer on" data-layer="skel"><span class="dot" style="background:#3ad6b0"></span>Skeleton</button>
+      {% if v.dancers > 1 %}{% for d in range(v.dancers) %}
+      <button class="dancer" data-dancer="{{ d }}"><span class="dot" data-dancer-dot="{{ d }}"></span>Dancer {{ d + 1 }}</button>
+      {% endfor %}{% endif %}
+    </div>
     <div id="stage" class="{% if v.has_video %}has-video{% endif %}">
       {% if v.has_video %}
       <video id="vid" src="/video/{{ v.video_key }}.mov" playsinline muted loop></video>
       {% endif %}
       <canvas id="cv" style="{% if v.has_video %}position:absolute;inset:0;width:100%;height:100%{% endif %}"></canvas>
     </div>
-    {# Same control, same order, as the app's players: Both / Video / Skeleton. #}
-    {% if v.has_video %}
-    <div class="ctl" style="margin-top:10px">
-      <span class="lbl">Show</span>
-      <button class="mode" data-mode="both" style="min-width:0;padding:6px 12px">Both</button>
-      <button class="mode" data-mode="video" style="min-width:0;padding:6px 12px">Video</button>
-      <button class="mode" data-mode="skel" style="min-width:0;padding:6px 12px">Skeleton</button>
-    </div>
-    {% endif %}
-    {# Two dancers — a couple, or a teacher and a student — can be seen one at a time. #}
-    {% if v.dancers > 1 %}
-    <div class="ctl" style="margin-top:10px">
-      <span class="lbl">Dancers</span>
-      {% for d in range(v.dancers) %}
-      <button class="dancer" data-dancer="{{ d }}" style="min-width:0;padding:6px 12px">
-        <span class="dot" data-dancer-dot="{{ d }}" style="display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:1px"></span>Dancer {{ d + 1 }}</button>
-      {% endfor %}
-    </div>
-    {% endif %}
     <div class="ctl">
       <button id="play">Pause</button>
       <input id="scrub" type="range" min="0" value="0">
@@ -112,13 +107,17 @@ document.getElementById('scrub').oninput = e => {
   sk.pause(); document.getElementById('play').textContent = 'Play'; sk.seek(+e.target.value);
 };
 document.getElementById('yaw').oninput = e => { sk.yaw = (+e.target.value)*Math.PI/180; sk.draw(); };
+if (!HASVID) {
+  const chip = document.querySelector('button.layer[data-layer="skel"]');
+  if (chip) chip.onclick = () => { const on = chip.classList.toggle('on'); sk.c.style.visibility = on ? 'visible' : 'hidden'; };
+}
 {
   // Per-dancer switches, coloured like the skeletons they control.
   const DANCER_COLOURS = ['#3ad6b0', '#ff8fa3'];
   const chips = document.querySelectorAll('button.dancer');
   const paint = () => chips.forEach(b => {
     const d = +b.dataset.dancer, on = !sk.hidden.has(d);
-    b.style.opacity = on ? 1 : 0.45;
+    b.classList.toggle('on', on);
     b.querySelector('.dot').style.background = DANCER_COLOURS[d % DANCER_COLOURS.length];
   });
   chips.forEach(b => b.onclick = () => {
@@ -130,15 +129,15 @@ document.getElementById('yaw').oninput = e => { sk.yaw = (+e.target.value)*Math.
 }
 if (HASVID) {
   const vid = document.getElementById('vid');
-  const buttons = document.querySelectorAll('button.mode');
-  let mode = 'both';
+  const layers = { video: true, skel: true };
+  const chips = document.querySelectorAll('button.layer');
   function apply() {
-    vid.style.visibility  = (mode === 'skel')  ? 'hidden' : 'visible';
-    sk.c.style.visibility = (mode === 'video') ? 'hidden' : 'visible';
-    sk.c.style.background = (mode === 'skel')  ? 'var(--panel2)' : 'transparent';
-    buttons.forEach(b => b.style.opacity = (b.dataset.mode === mode) ? 1 : 0.45);
+    vid.style.visibility  = layers.video ? 'visible' : 'hidden';
+    sk.c.style.visibility = layers.skel ? 'visible' : 'hidden';
+    sk.c.style.background = layers.video ? 'transparent' : 'var(--panel2)';
+    chips.forEach(b => b.classList.toggle('on', layers[b.dataset.layer]));
   }
-  buttons.forEach(b => b.onclick = () => { mode = b.dataset.mode; apply(); });
+  chips.forEach(b => b.onclick = () => { layers[b.dataset.layer] = !layers[b.dataset.layer]; apply(); });
   // the video is the clock when it is present, so the skeleton cannot drift off it
   vid.play().catch(() => {});
   vid.addEventListener('timeupdate', () => {
