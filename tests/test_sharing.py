@@ -59,8 +59,10 @@ def test_a_public_video_shared_by_grant_still_reaches_the_inbox():
 
     # The web page draws from the same list.
     page = client.get("/me", cookies={"ds_session": viewer}).text
-    assert "Shared with you" in page
-    assert "Social dancing" in page and "Rehearsal" in page and "Not for you" not in page
+    # In the body, after the page's own content — not smuggled into <title>.
+    body = page.split("<body", 1)[1]
+    assert body.index("Who can see what") < body.index("Shared with you")
+    assert "Social dancing" in body and "Rehearsal" in body and "Not for you" not in body
 
     # Making a shared clip private again takes it out of the inbox.
     client.post(f"/v1/videos/{private}/visibility", json={"visibility": "private"},
