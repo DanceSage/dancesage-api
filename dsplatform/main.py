@@ -443,8 +443,10 @@ def me(u: User = Depends(current_user)):
                         "visibility": v.visibility,
                         "frames": v.frames, "has_video": v.has_video,
                         "pose_key": v.pose_key, "pose2d_key": v.pose2d_key,
-                        "video_key": v.video_key, "fps": int(v.fps or 30)}
-                       for v in u.videos]}
+                        "video_key": v.video_key, "fps": int(v.fps or 30),
+                        "created_at": v.created_at.isoformat()}
+                       # Newest first — the same order the web page shows.
+                       for v in sorted(u.videos, key=lambda v: v.created_at, reverse=True)]}
 
 
 @app.patch("/v1/me")
