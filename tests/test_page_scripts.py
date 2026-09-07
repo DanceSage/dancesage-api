@@ -97,7 +97,10 @@ def test_lessons_page_scripts_run(tmp_path):
     lessons = [{"id": 1, "name": "Basic", "lesson": {"id": 1, "title": "Basic"}, "teacher": {"handle": "t", "display_name": "T"},
                 "group": None, "series": {"id": 1, "name": "Friday"},
                 "attempts": [{"id": 2, "title": "try", "created_at": "2026-09-07T00:00:00", "sent": False, "has_video": True}]}]
-    _run(_scripts("lessons.html", lessons=lessons, me=me, offer_count=0), tmp_path)
+    classes = [{"lesson": {"id": 3, "title": "Copa"}, "series": None, "groups": ["g"],
+                "students": [{"handle": "s", "display_name": "S", "accepted": True}],
+                "attempts": [{"id": 4, "title": "try", "by": {"display_name": "S"}, "sent_at": "2026-09-07T00:00:00", "has_video": False}]}]
+    _run(_scripts("lessons.html", lessons=lessons, classes=classes, me=me, offer_count=0), tmp_path)
 
 
 def test_attempt_page_runs_the_replay(tmp_path):

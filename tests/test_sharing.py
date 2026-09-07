@@ -551,6 +551,18 @@ def test_a_lesson_exists_from_add_to_lessons_and_can_be_deleted_whole():
     # Someone else can't delete her attempt or her lesson.
     assert client.delete(f"/v1/lessons/attempts/{ids[1]}", headers=hdr(teacher)).status_code == 404
     assert client.delete(f"/v1/lessons/{lid}", headers=hdr(teacher)).status_code == 404
+    # The teacher's side: I'm teaching lists the video, the students, and what came back.
+    classes = client.get("/v1/classes", headers=hdr(teacher)).json()["classes"]
+    assert [c["lesson"]["title"] for c in classes] == ["Basic"]
+    assert classes[0]["series"]["name"] == "Friday"
+    assert [(s["handle"], s["accepted"]) for s in classes[0]["students"]] == [("lm2", True)]
+    client.post(f"/v1/lessons/{ids[1]}/send", headers=hdr(maya))
+    classes = client.get("/v1/classes", headers=hdr(teacher)).json()["classes"]
+    assert [(a["title"], a["by"]["handle"]) for a in classes[0]["attempts"]] == [("try 2", "lm2")]
+    page = client.get("/lessons", cookies={"ds_session": teacher}).text
+    assert "I'm teaching" in page and "try 2" in page and "Lm2" in page
+    assert "I'm teaching" not in client.get("/lessons", cookies={"ds_session": maya}).text
+
     # Delete the lesson: attempts go with it; the teacher's video is untouched.
     assert client.delete(f"/v1/lessons/{lid}", headers=hdr(maya)).json()["attempts_deleted"] == 1
     assert client.get("/v1/lessons", headers=hdr(maya)).json()["lessons"] == []

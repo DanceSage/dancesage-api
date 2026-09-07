@@ -1,8 +1,23 @@
 {% extends "base.html" %}
 {% block title %}My lessons · Dance Sage{% endblock %}
 {% block body %}
-<h1 style="font-size:1.5rem;margin:0 0 4px">My lessons</h1>
-<p class="sub" style="margin:0 0 22px">Every video you added to Lessons, arranged the way the teacher shared it. Under each: your attempts. Send one to the teacher, or delete it. Nothing here is on your profile.</p>
+<h1 style="font-size:1.5rem;margin:0 0 4px">Lessons</h1>
+<p class="sub" style="margin:0 0 22px">What you're learning, and what you're teaching.</p>
+
+{% if classes %}
+<h2 style="font-size:1.05rem;margin:0 0 4px">I'm teaching</h2>
+<p class="sub" style="margin:0 0 12px">Videos you shared as lessons, with your students' attempts under each. Open one for the replay.</p>
+{% set cfolders = classes|selectattr('series')|groupby('series.name') %}
+{% for name, group in cfolders %}
+<div class="folder">
+  <div class="folder-head"><span>&#128193;</span> {{ name }} <span class="cnt">series &middot; {{ group|length }}</span></div>
+  {% for c in group %}{% include '_class.html' %}{% endfor %}
+</div>
+{% endfor %}
+{% for c in classes|rejectattr('series') %}{% include '_class.html' %}{% endfor %}
+<h2 style="font-size:1.05rem;margin:30px 0 4px">I'm learning</h2>
+{% endif %}
+<p class="sub" style="margin:0 0 12px">Videos you added to Lessons, arranged the way the teacher shared them. Under each: your attempts — send one to the teacher, or delete it. Nothing here is on your profile.</p>
 
 {% set folders = lessons|selectattr('series')|groupby('series.name') %}
 {% for name, group in folders %}

@@ -1037,6 +1037,43 @@ def my_lessons(u: User = Depends(current_user), db: Session = Depends(get_db)):
     return {"lessons": _my_lessons(u, db)}
 
 
+def _my_classes(u: User, db: Session) -> list[dict]:
+    """What I teach: every video of mine that went out as a lesson — through a
+    group, a series, or one to one — with the students' attempts under it,
+    each saying who and when. Arranged by series, like everything else."""
+    out_grants = db.execute(select(Grant).where(Grant.owner_id == u.id, Grant.revoked_at.is_(None))).scalars().all()
+    classes: dict[int, dict] = {}
+    for g in out_grants:
+        v = g.video
+        if v is None or v.user_id != u.id or v.reply_to is not None:
+            continue
+        sg = db.get(SeriesGrant, g.series_grant_id) if g.series_grant_id else None
+        entry = classes.setdefault(v.id, {"lesson": _card(v), "students": [], "attempts": [],
+                                          "series": None, "groups": []})
+        if sg and not entry["series"]:
+            entry["series"] = {"id": sg.series_id, "name": sg.series.name}
+        if g.group_id and g.group and g.group.name not in entry["groups"]:
+            entry["groups"].append(g.group.name)
+        entry["students"].append({"handle": g.viewer.handle, "display_name": g.viewer.display_name,
+                                  "accepted": g.accepted_at is not None})
+    # Attempts that reached me: shares from a student of a video answering one of mine.
+    in_grants = db.execute(select(Grant).where(Grant.viewer_id == u.id, Grant.revoked_at.is_(None),
+                                               Grant.accepted_at.is_not(None))).scalars().all()
+    for g in in_grants:
+        a = g.video
+        if a is None or a.reply_to is None or a.reply_to not in classes:
+            continue
+        classes[a.reply_to]["attempts"].append(dict(_card(a), sent_at=g.created_at.isoformat()))
+    for c in classes.values():
+        c["attempts"].sort(key=lambda x: x["id"], reverse=True)
+    return sorted(classes.values(), key=lambda c: c["lesson"]["id"], reverse=True)
+
+
+@app.get("/v1/classes")
+def my_classes(u: User = Depends(current_user), db: Session = Depends(get_db)):
+    return {"classes": _my_classes(u, db)}
+
+
 @app.post("/v1/lessons/{attempt_id}/send")
 def send_attempt(attempt_id: int, u: User = Depends(current_user), db: Session = Depends(get_db)):
     """Send a saved attempt to the teacher — the owner of the video it answers,
@@ -1062,7 +1099,8 @@ def lessons_page(request: Request, me: User | None = Depends(optional_user),
                  db: Session = Depends(get_db)):
     if not me:
         return RedirectResponse("/signin", status_code=303)
-    return templates.TemplateResponse(request, "lessons.html", {"lessons": _my_lessons(me, db)})
+    return templates.TemplateResponse(request, "lessons.html",
+                                      {"lessons": _my_lessons(me, db), "classes": _my_classes(me, db)})
 
 
 # ── series: folders in My videos, shared as a standing offer ───────────────

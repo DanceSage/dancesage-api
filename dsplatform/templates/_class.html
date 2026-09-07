@@ -1,0 +1,14 @@
+<details class="lesson" {% if c.attempts %}open{% endif %}>
+  <summary>
+    <span class="ttl">{{ c.lesson.title }}</span>
+    <span class="cnt">{{ c.students|selectattr('accepted')|list|length }}/{{ c.students|length }} students{% if c.groups %} &middot; {{ c.groups|join(', ') }}{% endif %} &middot; {{ c.attempts|length }} attempt{{ '' if c.attempts|length == 1 else 's' }}</span>
+    <a class="watch" href="/v/{{ c.lesson.id }}">watch</a>
+  </summary>
+  {% if c.attempts %}
+  <ul class="attempts">
+    {% for a in c.attempts %}
+    <li><a href="/v/{{ a.id }}"><b>{{ a.by.display_name }}</b> &middot; {{ a.title }}</a><span class="cnt">{{ a.sent_at[:10] }}{% if a.has_video %} &middot; video{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="none">No attempts yet{% if c.students %} &middot; {% for s in c.students %}@{{ s.handle }}{{ '' if s.accepted else ' (waiting)' }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}.</p>{% endif %}
+</details>
