@@ -95,3 +95,21 @@ def test_lessons_page_scripts_run(tmp_path):
     lessons = [{"lesson": {"id": 1, "title": "Basic"}, "teacher": {"handle": "t", "display_name": "T"},
                 "group": None, "attempts": [{"id": 2, "title": "try", "created_at": "2026-09-07T00:00:00", "sent": False}]}]
     _run(_scripts("lessons.html", lessons=lessons, me=me, offer_count=0), tmp_path)
+
+
+def test_attempt_page_runs_the_replay(tmp_path):
+    """replay.js itself, driven the way the attempt page drives it."""
+    me = _User(); owner = _User(); owner.id = 2
+    v = _Video(1); v.reply_to = 2; v.pose2d_key = "k"; v.video_key = "vk"; v.has_video = True; v.mirrored = True
+    lesson = _Video(2); lesson.has_video = True; lesson.video_key = "lk"; lesson.user = owner
+    scripts = _scripts("video.html", v=v, u=me, me=me, more=[], offer_count=0, can_share=False, lesson=lesson)
+    replay = (TEMPLATES.parent / "static" / "replay.js").read_text()
+    frames = 4
+    joints = [[[0.3 + 0.01 * j, 0.2 + 0.02 * j] for j in range(33)] for _ in range(frames)]
+    track = {"fps": 15, "frames": frames, "t": [i / 15 for i in range(frames)], "ta": [i / 15 for i in range(frames)],
+             "j": [joints, joints]}
+    drive = f"""
+      startReplay({{ root: 'replay', track: {__import__('json').dumps(track)}, mirrored: true,
+                     teacherVideo: '/video/lk.mov', youVideo: '/video/vk.mov' }});
+    """
+    _run([replay, drive] + scripts, tmp_path)

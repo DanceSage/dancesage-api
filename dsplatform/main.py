@@ -69,6 +69,9 @@ def _migrate_grant_offers():
             if vcols and "reply_to" not in vcols:
                 conn.execute(text("ALTER TABLE videos ADD COLUMN reply_to INTEGER"))
                 print("videos: added reply_to", flush=True)
+            if vcols and "mirrored" not in vcols:
+                conn.execute(text("ALTER TABLE videos ADD COLUMN mirrored INTEGER DEFAULT 0"))
+                print("videos: added mirrored", flush=True)
     except Exception as e:
         print(f"grant offers migration skipped: {e}", flush=True)
 
@@ -229,9 +232,14 @@ def video(video_id: int, request: Request, me: User | None = Depends(optional_us
     # Your own: the full menu. Someone else's public one: share it on. A private
     # one shared with you: nothing — it is theirs to share, not yours.
     can_share = bool(me) and (v.user_id == me.id or v.visibility == "public")
+    # An attempt opens as the replay: its lesson's video and skeleton beside it,
+    # when the viewer may see that lesson.
+    lesson = db.get(Video, v.reply_to) if v.reply_to else None
+    if lesson is not None and not _may_view(lesson, me, db):
+        lesson = None
     return templates.TemplateResponse(request, "video.html",
                                       {"v": v, "u": v.user, "more": more,
-                                       "can_share": can_share})
+                                       "can_share": can_share, "lesson": lesson})
 
 
 @app.get("/pose/{key:path}.json")
@@ -368,6 +376,8 @@ async def upload(
     times: str = Form(""),            # JSON: seconds per frame, as actually captured
     visibility: str = Form("private"),  # private by default; going public is a choice
     reply_to: int | None = Form(None),  # the video this is an attempt at, if any
+    mirrored: bool = Form(False),       # attempt: student read left/right flipped
+    times_att: str = Form(""),          # attempt: the student's own clock per reference frame
     video: UploadFile | None = File(None),
     u: User = Depends(current_user),
     db: Session = Depends(get_db),
@@ -406,8 +416,17 @@ async def upload(
     pose2d_key = ""
     if pose2d:
         p2 = json.loads(pose2d)
-        st.put_pose(f"{stem}-2d", {"fps": fps, "frames": len(p2["j"][0]), "j": p2["j"],
-                                   "t": stamps, "vis": p2.get("vis", [])})
+        payload = {"fps": fps, "frames": len(p2["j"][0]), "j": p2["j"],
+                   "t": stamps, "vis": p2.get("vis", [])}
+        # An attempt: when the student's own video sits at each reference frame.
+        if times_att:
+            try:
+                ta = [float(x) for x in json.loads(times_att)]
+                if len(ta) == payload["frames"]:
+                    payload["ta"] = ta
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+        st.put_pose(f"{stem}-2d", payload)
         pose2d_key = f"{stem}-2d"
     video_key = ""
     if video is not None:
@@ -424,7 +443,7 @@ async def upload(
     v = Video(user_id=u.id, title=title, note=note, style=style, level=level,
               pose_key=f"{stem}-3d", pose2d_key=pose2d_key, video_key=video_key,
               dancers=len(p3["j"]), frames=frames, fps=int(fps),
-              visibility=visibility, reply_to=reply_to)
+              visibility=visibility, reply_to=reply_to, mirrored=1 if mirrored else 0)
     db.add(v); db.commit(); db.refresh(v)
     return {"id": v.id, "url": f"/v/{v.id}", "profile": f"/@{u.handle}",
             "visibility": v.visibility}
@@ -569,6 +588,7 @@ def _card(v: Video) -> dict:
             "has_video": v.has_video, "dancers": v.dancers,
             "pose_key": v.pose_key, "pose2d_key": v.pose2d_key,
             "video_key": v.video_key, "note": v.note, "reply_to": v.reply_to,
+            "mirrored": bool(v.mirrored),
             "by": {"handle": v.user.handle, "display_name": v.user.display_name,
                    "avatar": f"/avatar/{v.user.handle}.jpg" if v.user.avatar_key else ""}}
 

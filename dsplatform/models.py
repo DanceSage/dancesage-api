@@ -50,6 +50,9 @@ class Video(Base):
     # under the lesson on a group's wall.
     reply_to: Mapped[int | None] = mapped_column(ForeignKey("videos.id"), nullable=True,
                                                  default=None, index=True)
+    # For an attempt: the comparator read the student better left/right
+    # flipped. The web replay must flip the same way the phone did.
+    mirrored: Mapped[int] = mapped_column(Integer, default=0)
     frames: Mapped[int] = mapped_column(Integer, default=0)
     fps: Mapped[float] = mapped_column(Float, default=30.0)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)

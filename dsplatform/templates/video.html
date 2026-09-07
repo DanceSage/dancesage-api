@@ -33,6 +33,33 @@
   .two{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:20px;align-items:start}
   @media(max-width:860px){.two{grid-template-columns:1fr}}
 </style>
+{% if lesson %}
+<style>
+  .rp-pills{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 10px}
+  .rp-group{display:inline-flex;gap:6px;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:999px;padding:4px}
+  .rp-group button{background:none;border:none;color:var(--muted);font:600 .8rem var(--font-body);padding:5px 12px;border-radius:999px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;min-width:0}
+  .rp-group button.on{color:var(--text);background:rgba(255,255,255,.08)}
+  .rp-group button i{display:inline-block;width:8px;height:8px;border-radius:50%;opacity:.35}
+  .rp-group button.on i{opacity:1}
+  .rp-stage{display:flex;gap:6px;justify-content:center}
+  .rp-panel{position:relative;aspect-ratio:9/16;max-height:72vh;flex:1;min-width:0;background:var(--panel2);border-radius:12px;overflow:hidden}
+  .rp-overlaid .rp-panel{flex:none;width:min(100%,calc(72vh*9/16))}
+  .rp-panel video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform-origin:center}
+  .rp-panel canvas{position:absolute;inset:0;width:100%;height:100%}
+  .rp-tag{position:absolute;left:10px;top:8px;font:600 .72rem var(--font-body);color:rgba(255,255,255,.75);background:rgba(0,0,0,.45);padding:2px 8px;border-radius:999px}
+  .rp-none{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);font-size:.72rem;color:rgba(255,255,255,.45)}
+</style>
+<div class="two">
+  <div class="player" id="replay"></div>
+  <div>
+    <h1 style="font-size:1.35rem">{{ v.title }}</h1>
+    <div style="color:var(--muted);font-size:.9rem;margin-bottom:12px">
+      <a href="/@{{ u.handle }}" style="color:var(--teal)">{{ u.display_name }}</a>'s attempt at
+      <a href="/v/{{ lesson.id }}" style="color:var(--teal)">{{ lesson.title }}</a> by {{ lesson.user.display_name }}</div>
+    <p class="sub" style="font-size:.94rem">{{ v.note }}</p>
+  </div>
+</div>
+{% else %}
 <div class="two">
   <div class="player">
     <div class="ctl" style="margin:0 0 10px">
@@ -86,8 +113,15 @@
     </div>{% endif %}
   </div>
 </div>
+{% endif %}
 {% endblock %}
-{% block js %}{% if can_share %}{% include '_vmenu_js.html' %}{% endif %}<script>
+{% block js %}{% if lesson %}<script src="/static/replay.js?v=1"></script><script>
+fetch('/pose/{{ v.pose2d_key }}.json').then(r => r.json()).then(track => startReplay({
+  root: 'replay', track: track, mirrored: {{ 'true' if v.mirrored else 'false' }},
+  teacherVideo: {{ ('"/video/' ~ lesson.video_key ~ '.mov"') if lesson.has_video else 'null' }},
+  youVideo: {{ ('"/video/' ~ v.video_key ~ '.mov"') if v.has_video else 'null' }}
+}));
+</script>{% else %}{% if can_share %}{% include '_vmenu_js.html' %}{% endif %}<script>
 const HASVID = {{ 'true' if v.has_video else 'false' }};
 const POSE2D = "{{ v.pose2d_key }}";
 const sk = new Skeleton(document.getElementById('cv'), {yaw: 17*Math.PI/180});
@@ -169,4 +203,4 @@ if (HASVID) {
   const end=()=>{drag=false;c.classList.remove('drag');};
   c.addEventListener('pointerup',end); c.addEventListener('pointercancel',end);
 }
-</script>{% endblock %}
+</script>{% endif %}{% endblock %}
