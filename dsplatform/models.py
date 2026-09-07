@@ -88,10 +88,15 @@ class Grant(Base):
                                                             default=None)
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True,
                                                            default=None)
+    # Set when the share went through a group — either the owner sharing to
+    # the class, or a member sharing back. That is what files it on the wall.
+    group_id: Mapped[int | None] = mapped_column(ForeignKey("groups.id"), nullable=True,
+                                                 default=None, index=True)
 
     owner: Mapped[User] = relationship(foreign_keys=[owner_id])
     viewer: Mapped[User] = relationship(foreign_keys=[viewer_id])
     video: Mapped["Video | None"] = relationship(foreign_keys=[video_id])
+    group: Mapped["Group | None"] = relationship(foreign_keys=[group_id])
 
     @property
     def active(self) -> bool:

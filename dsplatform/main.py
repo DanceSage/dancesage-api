@@ -56,6 +56,9 @@ def _migrate_grant_offers():
                 conn.execute(text("ALTER TABLE grants ADD COLUMN accepted_at DATETIME"))
                 conn.execute(text("UPDATE grants SET accepted_at = created_at"))
                 print("grants: added accepted_at, existing shares accepted", flush=True)
+            if cols and "group_id" not in cols:
+                conn.execute(text("ALTER TABLE grants ADD COLUMN group_id INTEGER"))
+                print("grants: added group_id", flush=True)
     except Exception as e:
         print(f"grant offers migration skipped: {e}", flush=True)
 
@@ -555,7 +558,9 @@ def _shared_with(me: User, db: Session, *, pending: bool = False) -> list[dict]:
             "videos": []})
         # The grant id rides with the card: accepting, declining and stopping
         # all name it.
-        entry["videos"].append(dict(_card(v), grant_id=g.id))
+        entry["videos"].append(dict(_card(v), grant_id=g.id,
+                                    group=({"id": g.group_id, "name": g.group.name}
+                                           if g.group_id and g.group else None)))
     out = list(by_owner.values())
     for entry in out:
         entry["videos"].sort(key=lambda c: c["id"], reverse=True)
@@ -666,19 +671,26 @@ def list_grants(u: User = Depends(current_user), db: Session = Depends(get_db)):
                        for g in rows]}
 
 
-def _grant(db: Session, owner: User, viewer: User, v: Video) -> Grant:
+def _grant(db: Session, owner: User, viewer: User, v: Video,
+           group: Group | None = None, accepted: bool = False) -> Grant:
     """One person, one video. Re-granting someone you revoked reuses the row
-    rather than piling up history."""
+    rather than piling up history. `accepted` skips the offer — a reply to a
+    class is an answer, not a question."""
     existing = db.execute(select(Grant).where(
         Grant.owner_id == owner.id, Grant.viewer_id == viewer.id,
         Grant.video_id == v.id)).scalars().first()
-    if existing:
-        if existing.revoked_at is not None:
-            existing.revoked_at = None
-            existing.accepted_at = None      # ended once; ask again
-        return existing
-    g = Grant(owner_id=owner.id, viewer_id=viewer.id, video_id=v.id)
-    db.add(g)
+    g = existing
+    if g:
+        if g.revoked_at is not None:
+            g.revoked_at = None
+            g.accepted_at = None      # ended once; ask again
+    else:
+        g = Grant(owner_id=owner.id, viewer_id=viewer.id, video_id=v.id)
+        db.add(g)
+    if group is not None:
+        g.group_id = group.id
+    if accepted and g.accepted_at is None:
+        g.accepted_at = dt.datetime.utcnow()
     return g
 
 
@@ -695,6 +707,7 @@ def add_grant(payload: dict, u: User = Depends(current_user),
         raise HTTPException(404, "No such video")
 
     viewers: list[User] = []
+    group: Group | None = None
     handle = (payload.get("handle") or "").strip().lstrip("@").lower()
     group_id = payload.get("group_id")
     if handle:
@@ -714,7 +727,7 @@ def add_grant(payload: dict, u: User = Depends(current_user),
     else:
         raise HTTPException(400, "handle or group_id required")
 
-    grants = [_grant(db, u, viewer, v) for viewer in viewers]
+    grants = [_grant(db, u, viewer, v, group) for viewer in viewers]
     db.commit()
     for g in grants:
         db.refresh(g)
@@ -771,9 +784,72 @@ def _add_member(db: Session, g: Group, handle: str, u: User) -> None:
 
 @app.get("/v1/groups")
 def list_groups(u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """`groups` you own; `member_of` the ones someone put you in."""
     rows = db.execute(select(Group).where(Group.owner_id == u.id)
                       .order_by(Group.created_at)).scalars().all()
-    return {"groups": [_group_card(g) for g in rows]}
+    mine = db.execute(select(GroupMember).where(GroupMember.user_id == u.id)).scalars().all()
+    return {"groups": [_group_card(g) for g in rows],
+            "member_of": [dict(_group_card(m.group),
+                               owner={"handle": m.group.owner.handle,
+                                      "display_name": m.group.owner.display_name})
+                          for m in mine]}
+
+
+def _group_of(db: Session, group_id: int, u: User) -> tuple[Group, bool]:
+    """The group and whether you own it. Members get in; strangers get a 404."""
+    g = db.get(Group, group_id)
+    if not g:
+        raise HTTPException(404, "No such group")
+    if g.owner_id == u.id:
+        return g, True
+    if any(m.user_id == u.id for m in g.members):
+        return g, False
+    raise HTTPException(404, "No such group")
+
+
+@app.get("/v1/groups/{group_id}/wall")
+def group_wall(group_id: int, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """What went through this group. `lessons`: the owner's videos shared to
+    it. `replies`: what members shared back — the owner sees everyone's,
+    a member sees only their own."""
+    g, owner = _group_of(db, group_id, u)
+    grants = db.execute(select(Grant).where(Grant.group_id == g.id,
+                                            Grant.revoked_at.is_(None))).scalars().all()
+    lessons: dict[int, dict] = {}
+    replies: list[dict] = []
+    for gr in grants:
+        v = gr.video
+        if v is None:
+            continue
+        if gr.owner_id == g.owner_id:
+            card = lessons.setdefault(v.id, dict(_card(v), members=[]))
+            card["members"].append({"handle": gr.viewer.handle, "accepted": gr.accepted_at is not None,
+                                    "grant_id": gr.id if gr.viewer_id == u.id else None})
+        elif owner or gr.owner_id == u.id:
+            replies.append(dict(_card(v), grant_id=gr.id if owner else None))
+    replies.sort(key=lambda c: c["id"], reverse=True)
+    return {"group": dict(_group_card(g), owner={"handle": g.owner.handle,
+                                                 "display_name": g.owner.display_name},
+                          mine=owner),
+            "lessons": sorted(lessons.values(), key=lambda c: c["id"], reverse=True),
+            "replies": replies}
+
+
+@app.post("/v1/groups/{group_id}/share")
+def share_to_group(group_id: int, payload: dict, u: User = Depends(current_user),
+                   db: Session = Depends(get_db)):
+    """A member shares one of their own videos back to the group. It goes to
+    the owner, already accepted — a reply is an answer, not a question — and
+    is filed under the group."""
+    g, owner = _group_of(db, group_id, u)
+    if owner:
+        raise HTTPException(400, "Share to your own group with Group share")
+    v = db.get(Video, int(payload.get("video_id") or 0))
+    if not v or v.user_id != u.id:
+        raise HTTPException(404, "No such video")
+    gr = _grant(db, u, g.owner, v, g, accepted=True)
+    db.commit(); db.refresh(gr)
+    return {"id": gr.id, "group": g.name, "to": g.owner.handle}
 
 
 @app.post("/v1/groups")

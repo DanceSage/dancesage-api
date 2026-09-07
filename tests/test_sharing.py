@@ -253,3 +253,40 @@ def test_the_video_menu_lives_on_the_video_page_too_and_stats_count_shared():
     # On the clip's own page the owner gets the menu; the viewer does not.
     assert 'class="vmenu"' in client.get(f"/v/{clip}", cookies={"ds_session": owner}).text
     assert 'class="vmenu"' not in client.get(f"/v/{clip}", cookies={"ds_session": viewer}).text
+
+
+def test_a_group_has_a_wall_and_members_share_back():
+    teacher, maya, leo, other = _user("prof"), _user("mia"), _user("lee"), _user("bystander")
+    hdr = lambda t: {"Authorization": f"Bearer {t}"}
+    gid = client.post("/v1/groups", json={"name": "Thursday salsa", "handles": ["mia", "lee"]},
+                      headers=hdr(teacher)).json()["id"]
+    lesson = _post(teacher, "Enchufla", "private")
+    client.post("/v1/grants", json={"group_id": gid, "video_id": lesson}, headers=hdr(teacher))
+
+    # Members know they're in it, and the offer says which group it came through.
+    assert [g["name"] for g in client.get("/v1/groups", headers=hdr(maya)).json()["member_of"]] == ["Thursday salsa"]
+    offer = _inbox(maya)["offers"][0]["videos"][0]
+    assert offer["group"]["name"] == "Thursday salsa"
+    _accept_all(maya)
+
+    # Maya shares an attempt back: it reaches the teacher at once, filed under the group.
+    attempt = _post(maya, "Enchufla — my attempt", "private")
+    r = client.post(f"/v1/groups/{gid}/share", json={"video_id": attempt}, headers=hdr(maya))
+    assert r.status_code == 200, r.text
+    assert "Enchufla — my attempt" in _inbox_titles(teacher)
+    assert _offer_titles(teacher) == []
+
+    wall = client.get(f"/v1/groups/{gid}/wall", headers=hdr(teacher)).json()
+    assert wall["group"]["mine"] is True
+    assert [l["title"] for l in wall["lessons"]] == ["Enchufla"]
+    assert sorted((m["handle"], m["accepted"]) for m in wall["lessons"][0]["members"]) == [("lee", False), ("mia", True)]
+    assert [(v["title"], v["by"]["handle"]) for v in wall["replies"]] == [("Enchufla — my attempt", "mia")]
+    assert client.get(f"/v/{attempt}", cookies={"ds_session": teacher}).status_code == 200
+
+    # Leo sees the lesson and his own (empty) replies, not Maya's; a stranger sees nothing.
+    leo_wall = client.get(f"/v1/groups/{gid}/wall", headers=hdr(leo)).json()
+    assert leo_wall["group"]["mine"] is False and leo_wall["replies"] == []
+    assert [l["title"] for l in leo_wall["lessons"]] == ["Enchufla"]
+    assert client.get(f"/v1/groups/{gid}/wall", headers=hdr(other)).status_code == 404
+    assert client.post(f"/v1/groups/{gid}/share", json={"video_id": lesson}, headers=hdr(teacher)).status_code == 400
+    assert client.post(f"/v1/groups/{gid}/share", json={"video_id": lesson}, headers=hdr(leo)).status_code == 404
