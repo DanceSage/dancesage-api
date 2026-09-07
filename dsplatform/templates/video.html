@@ -32,12 +32,23 @@
       {% endif %}
       <canvas id="cv" style="{% if v.has_video %}position:absolute;inset:0;width:100%;height:100%{% endif %}"></canvas>
     </div>
+    {# Same control, same order, as the app's players: Both / Video / Skeleton. #}
     {% if v.has_video %}
     <div class="ctl" style="margin-top:10px">
       <span class="lbl">Show</span>
       <button class="mode" data-mode="both" style="min-width:0;padding:6px 12px">Both</button>
       <button class="mode" data-mode="video" style="min-width:0;padding:6px 12px">Video</button>
       <button class="mode" data-mode="skel" style="min-width:0;padding:6px 12px">Skeleton</button>
+    </div>
+    {% endif %}
+    {# Two dancers — a couple, or a teacher and a student — can be seen one at a time. #}
+    {% if v.dancers > 1 %}
+    <div class="ctl" style="margin-top:10px">
+      <span class="lbl">Dancers</span>
+      {% for d in range(v.dancers) %}
+      <button class="dancer" data-dancer="{{ d }}" style="min-width:0;padding:6px 12px">
+        <span class="dot" data-dancer-dot="{{ d }}" style="display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:1px"></span>Dancer {{ d + 1 }}</button>
+      {% endfor %}
     </div>
     {% endif %}
     <div class="ctl">
@@ -94,6 +105,22 @@ document.getElementById('scrub').oninput = e => {
   sk.pause(); document.getElementById('play').textContent = 'Play'; sk.seek(+e.target.value);
 };
 document.getElementById('yaw').oninput = e => { sk.yaw = (+e.target.value)*Math.PI/180; sk.draw(); };
+{
+  // Per-dancer switches, coloured like the skeletons they control.
+  const DANCER_COLOURS = ['#3ad6b0', '#ff8fa3'];
+  const chips = document.querySelectorAll('button.dancer');
+  const paint = () => chips.forEach(b => {
+    const d = +b.dataset.dancer, on = !sk.hidden.has(d);
+    b.style.opacity = on ? 1 : 0.45;
+    b.querySelector('.dot').style.background = DANCER_COLOURS[d % DANCER_COLOURS.length];
+  });
+  chips.forEach(b => b.onclick = () => {
+    const d = +b.dataset.dancer;
+    sk.hidden.has(d) ? sk.hidden.delete(d) : sk.hidden.add(d);
+    paint(); sk.draw();
+  });
+  paint();
+}
 if (HASVID) {
   const vid = document.getElementById('vid');
   const buttons = document.querySelectorAll('button.mode');

@@ -20,6 +20,8 @@ class Skeleton {
     this.still = opts.still ?? false;
     this.loop = opts.loop ?? true;
     this.f = 0; this.playing = false; this.data = null; this.last = 0;
+    // Dancers the viewer has switched off — see one of a pair on its own.
+    this.hidden = new Set();
     this.onframe = opts.onframe || null;
     new ResizeObserver(() => this.fit()).observe(canvas);
   }
@@ -107,6 +109,7 @@ class Skeleton {
     const x = this.x, dp = devicePixelRatio || 1;
     x.clearRect(0, 0, this.c.width, this.c.height);
     for (let p = 0; p < this.data.j.length; p++) {
+      if (this.hidden.has(p)) continue;
       const pts = this.poseAt(this.data.j[p]).map(q => this.project(q));
       const col = DANCER[p % DANCER.length];
       x.lineCap = 'round';
