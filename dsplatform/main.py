@@ -855,6 +855,12 @@ def add_grant(payload: dict, u: User = Depends(current_user),
     else:
         raise HTTPException(400, "handle or group_id required")
 
+    if v is not None and v.reply_to is not None:
+        answered = db.get(Video, v.reply_to)
+        if answered and any(viewer.id != answered.user_id for viewer in viewers):
+            raise HTTPException(400, "An attempt at someone's video can only go back to them. "
+                                     "Record your own video to teach it.")
+
     if series is not None:
         # A standing offer per person. Re-sharing after an end asks again.
         made = []
@@ -941,6 +947,8 @@ def add_to_series(series_id: int, payload: dict, u: User = Depends(current_user)
     v = db.get(Video, int(payload.get("video_id") or 0))
     if not v or v.user_id != u.id:
         raise HTTPException(404, "No such video")
+    if v.reply_to is not None:
+        raise HTTPException(400, "An attempt at someone's video is not a lesson. Record your own.")
     if not any(i.video_id == v.id for i in s.items):
         s.items.append(SeriesVideo(video_id=v.id))
         db.flush()

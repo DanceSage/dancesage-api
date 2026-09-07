@@ -435,3 +435,23 @@ def test_series_on_the_pages():
         client.post(f"/v1/shared/series/{s_['series_grant_id']}/accept", headers=hdr(maya))
     page = client.get("/me", cookies={"ds_session": maya}).text
     assert "Series shared with you" in page and "series “Friday”" in page
+
+
+def test_an_attempt_goes_back_to_its_teacher_and_nowhere_else():
+    teacher, maya, friend = _user("bossy"), _user("mayaa"), _user("frienda")
+    hdr = lambda t: {"Authorization": f"Bearer {t}"}
+    lesson = _post(teacher, "Sombrero", "private")
+    client.post("/v1/grants", json={"handle": "mayaa", "video_id": lesson}, headers=hdr(teacher))
+    _accept_all(maya)
+    pose = json.dumps({"j": [[[[0.1 * j, 0.2 * j, 0.0] for j in range(33)] for _ in range(4)]]})
+    attempt = client.post("/v1/videos", data={"title": "Sombrero — my attempt", "pose3d": pose, "pose2d": pose,
+                                              "reply_to": lesson}, headers=hdr(maya)).json()["id"]
+    # To the teacher: fine. To a friend, or into her own series: no.
+    assert client.post("/v1/grants", json={"handle": "bossy", "video_id": attempt}, headers=hdr(maya)).status_code == 200
+    assert client.post("/v1/grants", json={"handle": "frienda", "video_id": attempt}, headers=hdr(maya)).status_code == 400
+    sid = client.post("/v1/series", json={"name": "Mine"}, headers=hdr(maya)).json()["id"]
+    assert client.post(f"/v1/series/{sid}/videos", json={"video_id": attempt}, headers=hdr(maya)).status_code == 400
+    # Her own clean video: hers to do anything with.
+    own = _post(maya, "My own sombrero", "private")
+    assert client.post(f"/v1/series/{sid}/videos", json={"video_id": own}, headers=hdr(maya)).status_code == 200
+    assert client.post("/v1/grants", json={"handle": "frienda", "video_id": own}, headers=hdr(maya)).status_code == 200
