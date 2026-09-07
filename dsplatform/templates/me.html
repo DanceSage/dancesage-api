@@ -13,10 +13,6 @@
       <div><b>{{ videos|rejectattr('visibility','equalto','public')|list|length }}</b><span>private</span></div>
       <div><b>{{ videos|selectattr('id','in',shared_ids)|list|length }}</b><span>shared</span></div>
     </div>
-    <div>
-      <a class="chip" href="/@{{ u.handle }}">View public page</a>
-      <a class="chip" href="/signout">Sign out</a>
-    </div>
   </div>
 </div>
 
