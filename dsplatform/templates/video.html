@@ -52,7 +52,7 @@
       <input id="scrub" type="range" min="0" value="0">
       <span class="fno" id="fno">0</span>
       <label class="lbl">Turn <input id="yaw" type="range" min="-180" max="180" value="17" style="width:92px"></label>
-      <label class="lbl">Speed <input id="spd" type="range" min="0.25" max="2" step="0.25" value="1" style="width:92px"> <span id="spdv" style="min-width:2.4em">1x</span></label>
+      <label class="lbl">Speed <input id="spd" type="range" min="0.25" max="2" step="0.25" value="1" style="width:92px"></label>
     </div>
   </div>
   <div>
@@ -101,7 +101,6 @@ sk.load(POSE_URL).then(d => {
     const r = +e.target.value;
     d.fps = base * r;
     if (HASVID) document.getElementById('vid').playbackRate = r;   // the video is the clock then
-    document.getElementById('spdv').textContent = ({0.25:'¼x',0.5:'½x',0.75:'¾x',1:'1x',1.25:'1¼x',1.5:'1½x',1.75:'1¾x',2:'2x'})[r] || r + 'x';
   };
 });
 document.getElementById('play').onclick = e => {
