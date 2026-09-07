@@ -37,6 +37,21 @@
   {% endfor %}
 </div>
 {% if not videos %}<p class="sub">Nothing published yet.</p>{% endif %}
+{% if passed_on %}
+<h2 style="font-size:1.05rem;margin:34px 0 4px">Shared with {{ u.display_name }}</h2>
+<p class="sub" style="margin:0 0 14px">Public videos other dancers shared with {{ u.display_name }}.</p>
+<div class="grid">
+  {% for x in passed_on %}
+  <a class="card" href="/v/{{ x.video.id }}">
+    <canvas data-pose="/pose/{{ x.video.pose_key }}.json"></canvas>
+    <div class="meta">
+      <div class="t">{{ x.video.title }}</div>
+      <div class="s">shared by <span style="color:var(--teal)">{{ x.by.display_name }}</span> &middot; @{{ x.by.handle }} &middot; {{ x.video.seconds }}s{% if x.video.has_video %} &middot; video{% endif %}</div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
 {% endblock %}
 {% block js %}<script>
 document.querySelectorAll('canvas[data-pose]').forEach(c=>{ new Skeleton(c,{yaw:0.3,still:true}).load(c.dataset.pose); });

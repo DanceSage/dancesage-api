@@ -195,8 +195,19 @@ def profile(handle: str, request: Request, me: User | None = Depends(optional_us
     vids = sorted([v for v in u.videos if _may_view(v, me, db)],
                   key=lambda v: v.created_at, reverse=True)
     shared = bool(me) and me.id != u.id and _has_grant(db, u.id, me.id)
+    # Public videos other dancers shared with this person appear here too —
+    # with the sharer's name on them. Private ones never do; those are the
+    # owner's, and only the two of them can see them.
+    passed_on = []
+    for g in db.execute(select(Grant).where(Grant.viewer_id == u.id, Grant.revoked_at.is_(None),
+                                            Grant.accepted_at.is_not(None))).scalars().all():
+        v = g.video
+        if v is None or v.visibility != "public" or v.user_id == u.id:
+            continue
+        passed_on.append({"video": v, "by": g.owner})
+    passed_on.sort(key=lambda x: x["video"].created_at, reverse=True)
     return templates.TemplateResponse(request, "profile.html",
-                                      {"u": u, "videos": vids,
+                                      {"u": u, "videos": vids, "passed_on": passed_on,
                                        "is_owner": bool(me) and me.id == u.id,
                                        "has_access": shared})
 

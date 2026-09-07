@@ -328,3 +328,21 @@ def test_passing_on_a_video_you_were_shown():
     client.post(f"/v1/videos/{public}/visibility", json={"visibility": "private"}, headers=hdr(owner))
     assert _inbox_titles(zoe) == []
     assert client.get(f"/v/{public}", cookies={"ds_session": zoe}).status_code == 404
+
+
+def test_public_videos_shared_with_you_show_on_your_public_page_with_the_sharer():
+    owner, andy = _user("teach2"), _user("andy2")
+    hdr = lambda t: {"Authorization": f"Bearer {t}"}
+    public = _post(owner, "Open combo", "public")
+    private = _post(owner, "Closed combo", "private")
+    for vid in (public, private):
+        client.post("/v1/grants", json={"handle": "andy2", "video_id": vid}, headers=hdr(owner))
+    # Nothing shows until accepted.
+    assert "Open combo" not in client.get("/@andy2").text
+    _accept_all(andy)
+    page = client.get("/@andy2").text
+    assert "Open combo" in page and "shared by" in page and "Teach2" in page
+    assert "Closed combo" not in page
+    # The owner turning it private takes it off Andy's page.
+    client.post(f"/v1/videos/{public}/visibility", json={"visibility": "private"}, headers=hdr(owner))
+    assert "Open combo" not in client.get("/@andy2").text
