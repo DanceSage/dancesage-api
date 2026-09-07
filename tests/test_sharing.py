@@ -517,3 +517,41 @@ def test_a_ta_chooses_where_attempts_go():
     # And Zoe can't route an attempt anywhere else herself.
     assert client.post("/v1/grants", json={"handle": "ta", "video_id": a2}, headers=hdr(zoe)).status_code == 400
     assert client.post("/v1/grants", json={"handle": "zoe2", "video_id": video, "replies_to": "nobody"}, headers=hdr(ta)).status_code == 400
+
+
+def test_a_lesson_exists_from_add_to_lessons_and_can_be_deleted_whole():
+    teacher, maya = _user("lt2"), _user("lm2")
+    hdr = lambda t: {"Authorization": f"Bearer {t}"}
+    basic = _post(teacher, "Basic", "private")
+    sid = client.post("/v1/series", json={"name": "Friday", "video_ids": [basic]}, headers=hdr(teacher)).json()["id"]
+    client.post("/v1/grants", json={"series_id": sid, "handle": "lm2"}, headers=hdr(teacher))
+    for s_ in _inbox(maya)["series_offers"]:
+        client.post(f"/v1/shared/series/{s_['series_grant_id']}/accept", headers=hdr(maya))
+
+    # Add to Lessons: it's there at once, empty, filed under the series it came by.
+    r = client.post("/v1/lessons", json={"video_id": basic, "name": "Salsa basic"}, headers=hdr(maya))
+    assert r.status_code == 200, r.text
+    lid = r.json()["id"]
+    mine = client.get("/v1/lessons", headers=hdr(maya)).json()["lessons"]
+    assert [(l["name"], l["series"]["name"], l["attempts"]) for l in mine] == [("Salsa basic", "Friday", [])]
+    # Twice is once.
+    assert client.post("/v1/lessons", json={"video_id": basic}, headers=hdr(maya)).json()["id"] == lid
+    page = client.get("/lessons", cookies={"ds_session": maya}).text
+    assert "Friday" in page and "Salsa basic" in page and "No attempts yet" in page
+
+    # Two attempts; delete one; the other stays.
+    pose = json.dumps({"j": [[[[0.1 * j, 0.2 * j, 0.0] for j in range(33)] for _ in range(4)]]})
+    ids = [client.post("/v1/videos", data={"title": f"try {i}", "pose3d": pose, "pose2d": pose, "reply_to": basic},
+                       headers=hdr(maya)).json()["id"] for i in (1, 2)]
+    client.post(f"/v1/lessons/{ids[0]}/send", headers=hdr(maya))
+    assert _inbox_titles(teacher) == ["try 1"]
+    assert client.delete(f"/v1/lessons/attempts/{ids[0]}", headers=hdr(maya)).status_code == 200
+    assert _inbox_titles(teacher) == []
+    assert [a["title"] for a in client.get("/v1/lessons", headers=hdr(maya)).json()["lessons"][0]["attempts"]] == ["try 2"]
+    # Someone else can't delete her attempt or her lesson.
+    assert client.delete(f"/v1/lessons/attempts/{ids[1]}", headers=hdr(teacher)).status_code == 404
+    assert client.delete(f"/v1/lessons/{lid}", headers=hdr(teacher)).status_code == 404
+    # Delete the lesson: attempts go with it; the teacher's video is untouched.
+    assert client.delete(f"/v1/lessons/{lid}", headers=hdr(maya)).json()["attempts_deleted"] == 1
+    assert client.get("/v1/lessons", headers=hdr(maya)).json()["lessons"] == []
+    assert client.get(f"/v/{basic}", cookies={"ds_session": teacher}).status_code == 200

@@ -2,30 +2,28 @@
 {% block title %}My lessons · Dance Sage{% endblock %}
 {% block body %}
 <h1 style="font-size:1.5rem;margin:0 0 4px">My lessons</h1>
-<p class="sub" style="margin:0 0 22px">Videos you practised, and your attempts at each. An attempt stays here — never on your profile — until you send it to the teacher.</p>
-{% for l in lessons %}
-<details class="lesson" open>
-  <summary>
-    <span class="ttl">{{ l.lesson.title }}</span>
-    <span class="cnt">from {{ l.teacher.display_name }}{% if l.group %} &middot; via {{ l.group.name }}{% endif %} &middot; {{ l.attempts|length }} attempt{{ '' if l.attempts|length == 1 else 's' }}</span>
-    <a class="watch" href="/v/{{ l.lesson.id }}">watch</a>
-  </summary>
-  <ul class="attempts">
-    {% for a in l.attempts %}
-    <li data-attempt="{{ a.id }}">
-      <a href="/v/{{ a.id }}">{{ a.title }}</a>
-      <span class="cnt">{{ a.created_at[:10] if a.created_at else '' }}</span>
-      {% if a.sent %}<span class="sent">sent to {{ l.teacher.display_name }}</span>
-      {% else %}<button class="send">Send to {{ l.teacher.display_name }}</button>{% endif %}
-    </li>
-    {% endfor %}
-  </ul>
-</details>
-{% else %}
-<p class="sub">Nothing yet. Accept a video someone shared, add it to Lessons in the app, and dance it.</p>
+<p class="sub" style="margin:0 0 22px">Every video you added to Lessons, arranged the way the teacher shared it. Under each: your attempts. Send one to the teacher, or delete it. Nothing here is on your profile.</p>
+
+{% set folders = lessons|selectattr('series')|groupby('series.name') %}
+{% for name, group in folders %}
+<div class="folder">
+  <div class="folder-head"><span>&#128193;</span> {{ name }} <span class="cnt">series &middot; {{ group|length }} lesson{{ '' if group|length == 1 else 's' }}</span></div>
+  {% for l in group %}{% include '_lesson.html' %}{% endfor %}
+</div>
 {% endfor %}
+{% set loose = lessons|rejectattr('series')|list %}
+{% if loose and folders|list %}<div class="folder-head" style="margin-top:18px">Single lessons</div>{% endif %}
+{% for l in loose %}{% include '_lesson.html' %}{% endfor %}
+
+{% if not lessons %}
+<p class="sub">Nothing yet. Accept a video someone shared, then Add to Lessons in the app — it appears here at once, and your attempts fill in under it.</p>
+{% endif %}
 <style>
-  .lesson{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:0 16px;margin-bottom:10px;max-width:720px}
+  .folder{margin-bottom:18px}
+  .folder-head{font-weight:700;margin:8px 0 8px;display:flex;align-items:center;gap:8px}
+  .folder-head .cnt{font-weight:400;color:var(--muted);font-size:.78rem}
+  .lesson{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:0 16px;margin-bottom:10px;max-width:760px}
+  .folder .lesson{margin-left:18px}
   .lesson summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:13px 0}
   .lesson summary::-webkit-details-marker{display:none}
   .lesson summary::before{content:"▸";color:var(--gold);font-size:.9rem;transition:transform .15s}
@@ -33,16 +31,31 @@
   .lesson .ttl{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .lesson .cnt{color:var(--muted);font-size:.78rem;white-space:nowrap}
   .lesson .watch{color:var(--gold);font-size:.78rem;text-decoration:none}
+  .lesson .ldel{background:none;border:none;color:var(--rose);cursor:pointer;font:600 .72rem var(--mono);text-transform:uppercase}
   .attempts{list-style:none;margin:0 0 14px;padding:0 0 0 22px;display:grid;gap:8px}
   .attempts li{display:flex;align-items:center;gap:12px}
   .attempts li a{color:var(--text);text-decoration:none;font-size:.9rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .attempts .send{background:var(--gold);border:none;color:#241a06;font:600 .72rem var(--font-body);padding:5px 11px;border-radius:999px;cursor:pointer}
   .attempts .sent{color:#3ad6b0;font-size:.78rem}
+  .attempts .adel{background:none;border:none;color:var(--rose);cursor:pointer;font-size:.9rem;padding:0 4px}
+  .none{color:var(--muted);font-size:.85rem;margin:0 0 14px 22px}
 </style>
 {% endblock %}
 {% block js %}<script>
 document.querySelectorAll('li[data-attempt] .send').forEach(b => b.onclick = async () => {
   const r = await fetch(`/v1/lessons/${b.closest('li').dataset.attempt}/send`, { method: 'POST' });
   if (r.ok) location.reload(); else alert((await r.json()).detail || 'Could not send it.');
+});
+document.querySelectorAll('li[data-attempt] .adel').forEach(b => b.onclick = async () => {
+  if (!confirm('Delete this attempt? If it was sent, the teacher loses it too.')) return;
+  const r = await fetch(`/v1/lessons/attempts/${b.closest('li').dataset.attempt}`, { method: 'DELETE' });
+  if (r.ok) location.reload(); else alert('Could not delete it.');
+});
+document.querySelectorAll('details[data-lesson] .ldel').forEach(b => b.onclick = async e => {
+  e.preventDefault(); e.stopPropagation();
+  const d = b.closest('details');
+  if (!confirm(`Delete the lesson “${d.dataset.name}” and every attempt at it?`)) return;
+  const r = await fetch(`/v1/lessons/${d.dataset.lesson}`, { method: 'DELETE' });
+  if (r.ok) location.reload(); else alert('Could not delete it.');
 });
 </script>{% endblock %}

@@ -207,3 +207,17 @@ class SeriesGrant(Base):
     @property
     def active(self) -> bool:
         return self.revoked_at is None and self.accepted_at is not None
+
+
+class Lesson(Base):
+    """A video someone is practising: made the moment they Add to Lessons,
+    and the home of every attempt at it. Deleting it takes the attempts too."""
+    __tablename__ = "lessons"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    video_id: Mapped[int] = mapped_column(ForeignKey("videos.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    student: Mapped[User] = relationship(foreign_keys=[student_id])
+    video: Mapped[Video] = relationship(foreign_keys=[video_id])

@@ -15,7 +15,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 
 from .db import get_db, Base, engine, SessionLocal
-from .models import User, Video, Grant, Group, GroupMember, Series, SeriesVideo, SeriesGrant
+from .models import User, Video, Grant, Group, GroupMember, Series, SeriesVideo, SeriesGrant, Lesson
 from .storage import get_storage, LocalStorage
 from .auth import (verify_provider_token, issue_session, current_user,
                     optional_user, COOKIE, SECRET)
@@ -437,9 +437,12 @@ async def upload(
     if reply_to is not None and not _may_view(db.get(Video, reply_to), u, db):
         reply_to = None
     # An attempt lives under its lesson, for the student and the teacher; it is
-    # never a post on a profile and never public.
+    # never a post on a profile and never public. The lesson exists from here
+    # on if it somehow did not yet.
     if reply_to is not None:
         visibility = "private"
+        if not db.execute(select(Lesson).where(Lesson.student_id == u.id, Lesson.video_id == reply_to)).scalars().first():
+            db.add(Lesson(student_id=u.id, video_id=reply_to))
     v = Video(user_id=u.id, title=title, note=note, style=style, level=level,
               pose_key=f"{stem}-3d", pose2d_key=pose2d_key, video_key=video_key,
               dancers=len(p3["j"]), frames=frames, fps=int(fps),
@@ -780,6 +783,7 @@ def delete_account(u: User = Depends(current_user), db: Session = Depends(get_db
             pass
     # Grants both ways: what they gave out, and what was given to them.
     db.execute(delete(Grant).where((Grant.owner_id == u.id) | (Grant.viewer_id == u.id)))
+    db.execute(delete(Lesson).where(Lesson.student_id == u.id))
     # Series they own, and series shared to them.
     for s in db.execute(select(Series).where(Series.owner_id == u.id)).scalars().all():
         db.delete(s)
@@ -955,32 +959,76 @@ def _teacher_for(via: Grant | None, src: Video) -> User:
     return via.owner
 
 
-def _my_lessons(u: User, db: Session) -> list[dict]:
-    """Every video this person has attempted, with their attempts under it,
-    and whether each attempt has been sent to the video's owner."""
-    attempts = db.execute(select(Video).where(Video.user_id == u.id, Video.reply_to.is_not(None))
+def _lesson_card(lesson: Lesson, u: User, db: Session) -> dict:
+    """A lesson with its teacher, the group and series it came through, and
+    every attempt at it — each saying whether it has been sent."""
+    src = lesson.video
+    via = db.execute(select(Grant).where(Grant.viewer_id == u.id, Grant.video_id == src.id,
+                                         Grant.revoked_at.is_(None))).scalars().first()
+    teacher = _teacher_for(via, src)
+    sg = db.get(SeriesGrant, via.series_grant_id) if via and via.series_grant_id else None
+    attempts = db.execute(select(Video).where(Video.user_id == u.id, Video.reply_to == src.id)
                           .order_by(Video.created_at.desc())).scalars().all()
-    lessons: dict[int, dict] = {}
+    out = []
     for a in attempts:
-        src = db.get(Video, a.reply_to)
-        if src is None:
-            continue
-        entry = lessons.get(src.id)
-        if entry is None:
-            # The share that brought the lesson: says which group it came through.
-            via = db.execute(select(Grant).where(Grant.viewer_id == u.id, Grant.video_id == src.id,
-                                                 Grant.revoked_at.is_(None))).scalars().first()
-            teacher = _teacher_for(via, src)
-            entry = lessons[src.id] = {"lesson": _card(src),
-                                       "teacher": {"handle": teacher.handle, "display_name": teacher.display_name},
-                                       "group": ({"id": via.group_id, "name": via.group.name}
-                                                 if via and via.group_id and via.group else None),
-                                       "attempts": []}
         sent = db.execute(select(Grant).where(Grant.owner_id == u.id, Grant.viewer_id == teacher.id,
                                               Grant.video_id == a.id, Grant.revoked_at.is_(None))).scalars().first()
-        entry["attempts"].append(dict(_card(a), sent=sent is not None,
-                                      sent_at=sent.created_at.isoformat() if sent else ""))
-    return list(lessons.values())
+        out.append(dict(_card(a), sent=sent is not None, sent_at=sent.created_at.isoformat() if sent else ""))
+    return {"id": lesson.id, "name": lesson.name or src.title, "created_at": lesson.created_at.isoformat(),
+            "lesson": _card(src),
+            "teacher": {"handle": teacher.handle, "display_name": teacher.display_name},
+            "group": ({"id": via.group_id, "name": via.group.name} if via and via.group_id and via.group else None),
+            "series": ({"id": sg.series_id, "name": sg.series.name} if sg else None),
+            "attempts": out}
+
+
+def _my_lessons(u: User, db: Session) -> list[dict]:
+    rows = db.execute(select(Lesson).where(Lesson.student_id == u.id)
+                      .order_by(Lesson.created_at.desc())).scalars().all()
+    return [_lesson_card(l, u, db) for l in rows]
+
+
+@app.post("/v1/lessons")
+def add_lesson(payload: dict, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Add to Lessons: the lesson exists online from here on. Adding the same
+    video twice returns the one you have."""
+    v = db.get(Video, int(payload.get("video_id") or 0))
+    if not _may_view(v, u, db):
+        raise HTTPException(404, "No such video")
+    if v.reply_to is not None:
+        raise HTTPException(400, "An attempt is not a lesson")
+    lesson = db.execute(select(Lesson).where(Lesson.student_id == u.id, Lesson.video_id == v.id)).scalars().first()
+    if not lesson:
+        lesson = Lesson(student_id=u.id, video_id=v.id, name=(payload.get("name") or "").strip()[:120])
+        db.add(lesson)
+        db.commit(); db.refresh(lesson)
+    return _lesson_card(lesson, u, db)
+
+
+@app.delete("/v1/lessons/{lesson_id}")
+def delete_lesson(lesson_id: int, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The lesson and every attempt at it — their videos, their shares."""
+    lesson = db.get(Lesson, lesson_id)
+    if not lesson or lesson.student_id != u.id:
+        raise HTTPException(404, "No such lesson")
+    st = get_storage()
+    attempts = db.execute(select(Video).where(Video.user_id == u.id, Video.reply_to == lesson.video_id)).scalars().all()
+    for a in attempts:
+        _erase_video(st, db, a)
+    db.delete(lesson)
+    db.commit()
+    return {"ok": True, "deleted": lesson_id, "attempts_deleted": len(attempts)}
+
+
+@app.delete("/v1/lessons/attempts/{video_id}")
+def delete_attempt(video_id: int, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """One attempt, gone — with whatever share carried it to the teacher."""
+    a = db.get(Video, video_id)
+    if not a or a.user_id != u.id or a.reply_to is None:
+        raise HTTPException(404, "No such attempt")
+    _erase_video(get_storage(), db, a)
+    db.commit()
+    return {"ok": True, "deleted": video_id}
 
 
 @app.get("/v1/lessons")

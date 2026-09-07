@@ -92,8 +92,9 @@ def test_video_page_scripts_run_for_a_visitor_sharing_a_public_clip(tmp_path):
 
 def test_lessons_page_scripts_run(tmp_path):
     me = _User()
-    lessons = [{"lesson": {"id": 1, "title": "Basic"}, "teacher": {"handle": "t", "display_name": "T"},
-                "group": None, "attempts": [{"id": 2, "title": "try", "created_at": "2026-09-07T00:00:00", "sent": False}]}]
+    lessons = [{"id": 1, "name": "Basic", "lesson": {"id": 1, "title": "Basic"}, "teacher": {"handle": "t", "display_name": "T"},
+                "group": None, "series": {"id": 1, "name": "Friday"},
+                "attempts": [{"id": 2, "title": "try", "created_at": "2026-09-07T00:00:00", "sent": False, "has_video": True}]}]
     _run(_scripts("lessons.html", lessons=lessons, me=me, offer_count=0), tmp_path)
 
 

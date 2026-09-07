@@ -1,0 +1,21 @@
+<details class="lesson" data-lesson="{{ l.id }}" data-name="{{ l.name }}" {% if l.attempts %}open{% endif %}>
+  <summary>
+    <span class="ttl">{{ l.name }}</span>
+    <span class="cnt">from {{ l.teacher.display_name }}{% if l.group %} &middot; via {{ l.group.name }}{% endif %} &middot; {{ l.attempts|length }} attempt{{ '' if l.attempts|length == 1 else 's' }}</span>
+    <a class="watch" href="/v/{{ l.lesson.id }}">watch</a>
+    <button class="ldel" title="Delete this lesson and its attempts">Delete</button>
+  </summary>
+  {% if l.attempts %}
+  <ul class="attempts">
+    {% for a in l.attempts %}
+    <li data-attempt="{{ a.id }}">
+      <a href="/v/{{ a.id }}">{{ a.title }}</a>
+      <span class="cnt">{{ a.created_at[:10] if a.created_at else '' }}{% if a.has_video %} &middot; video{% endif %}</span>
+      {% if a.sent %}<span class="sent">sent to {{ l.teacher.display_name }}</span>
+      {% else %}<button class="send">Send to {{ l.teacher.display_name }}</button>{% endif %}
+      <button class="adel" title="Delete this attempt">&times;</button>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="none">No attempts yet. Dance it in the app and save.</p>{% endif %}
+</details>
