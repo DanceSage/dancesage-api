@@ -38,9 +38,24 @@ def _post(token: str, title: str, visibility: str) -> int:
     return r.json()["id"]
 
 
+def _inbox(token: str) -> dict:
+    return client.get("/v1/shared", headers={"Authorization": f"Bearer {token}"}).json()
+
+
 def _inbox_titles(token: str) -> list[str]:
-    r = client.get("/v1/shared", headers={"Authorization": f"Bearer {token}"})
-    return [v["title"] for who in r.json()["from"] for v in who["videos"]]
+    return [v["title"] for who in _inbox(token)["from"] for v in who["videos"]]
+
+
+def _offer_titles(token: str) -> list[str]:
+    return [v["title"] for who in _inbox(token)["offers"] for v in who["videos"]]
+
+
+def _accept_all(token: str) -> None:
+    for who in _inbox(token)["offers"]:
+        for v in who["videos"]:
+            r = client.post(f"/v1/shared/{v['grant_id']}/accept",
+                            headers={"Authorization": f"Bearer {token}"})
+            assert r.status_code == 200, r.text
 
 
 def test_a_public_video_shared_by_grant_still_reaches_the_inbox():
@@ -54,8 +69,14 @@ def test_a_public_video_shared_by_grant_still_reaches_the_inbox():
                         headers={"Authorization": f"Bearer {owner}"})
         assert r.status_code == 200, r.text
 
-    # Both granted clips arrive — the public one was the bug — and nothing else.
+    # Both arrive as offers — the public one was the bug — and nothing else;
+    # nothing is in the inbox, or viewable, until accepted.
+    assert sorted(_offer_titles(viewer)) == ["Rehearsal", "Social dancing"]
+    assert _inbox_titles(viewer) == []
+    assert client.get(f"/v/{private}", cookies={"ds_session": viewer}).status_code == 404
+    _accept_all(viewer)
     assert sorted(_inbox_titles(viewer)) == ["Rehearsal", "Social dancing"]
+    assert client.get(f"/v/{private}", cookies={"ds_session": viewer}).status_code == 200
 
     # The web page draws from the same list.
     page = client.get("/me", cookies={"ds_session": viewer}).text
@@ -93,12 +114,16 @@ def test_groups_share_with_everyone_at_once_and_anyone_can_decline():
     assert r.status_code == 200, r.text
     assert sorted(g["handle"] for g in r.json()["granted"]) == ["leo", "maya", "zoe"]
     for who in (maya, leo, zoe):
+        assert _offer_titles(who) == ["Cross body lead"]
+        _accept_all(who)
         assert _inbox_titles(who) == ["Cross body lead"]
 
     # Two clips from one teacher arrive as one sender, not one entry per grant.
     second = _post(teacher, "Copa", "private")
     client.post("/v1/grants", json={"group_id": gid, "video_id": second},
                 headers={"Authorization": f"Bearer {teacher}"})
+    for who in (maya, leo, zoe):
+        _accept_all(who)
     inbox = client.get("/v1/shared", headers={"Authorization": f"Bearer {maya}"}).json()["from"]
     assert len(inbox) == 1 and inbox[0]["handle"] == "teach"
     assert sorted(v["title"] for v in inbox[0]["videos"]) == ["Copa", "Cross body lead"]
@@ -118,3 +143,83 @@ def test_groups_share_with_everyone_at_once_and_anyone_can_decline():
     assert sorted(_inbox_titles(zoe)) == ["Copa", "Cross body lead"]
     assert client.delete(f"/v1/groups/{gid}", headers={"Authorization": f"Bearer {teacher}"}).status_code == 200
     assert sorted(_inbox_titles(zoe)) == ["Copa", "Cross body lead"]
+
+
+def test_the_whole_life_of_a_share():
+    """Offer → accept → stop, from either end; sharing again is a fresh offer."""
+    owner, viewer = _user("sender"), _user("receiver")
+    clip = _post(owner, "Basic step", "private")
+    hdr_o = {"Authorization": f"Bearer {owner}"}
+    hdr_v = {"Authorization": f"Bearer {viewer}"}
+
+    # An offer: the sender's ledger says so, the receiver can't watch yet.
+    gid = client.post("/v1/grants", json={"handle": "receiver", "video_id": clip}, headers=hdr_o).json()["id"]
+    ledger = client.get("/v1/grants", headers=hdr_o).json()["grants"]
+    assert ledger[0]["accepted"] is False
+    assert client.get(f"/v/{clip}", cookies={"ds_session": viewer}).status_code == 404
+    # Nobody else can answer it.
+    assert client.post(f"/v1/shared/{gid}/accept", headers=hdr_o).status_code == 404
+
+    # Declined: gone for both.
+    assert client.delete(f"/v1/shared/{gid}", headers=hdr_v).status_code == 200
+    assert _offer_titles(viewer) == [] and _inbox_titles(viewer) == []
+    assert client.get("/v1/grants", headers=hdr_o).json()["grants"] == []
+
+    # Shared again: a fresh offer on the same row, not a silent re-open.
+    gid2 = client.post("/v1/grants", json={"handle": "receiver", "video_id": clip}, headers=hdr_o).json()["id"]
+    assert gid2 == gid
+    assert _offer_titles(viewer) == ["Basic step"]
+    assert client.post(f"/v1/shared/{gid}/accept", headers=hdr_v).status_code == 200
+    assert _inbox_titles(viewer) == ["Basic step"]
+    assert client.get("/v1/grants", headers=hdr_o).json()["grants"][0]["accepted"] is True
+    assert client.get(f"/v/{clip}", cookies={"ds_session": viewer}).status_code == 200
+
+    # The receiver stops it.
+    assert client.delete(f"/v1/shared/{gid}", headers=hdr_v).status_code == 200
+    assert client.get(f"/v/{clip}", cookies={"ds_session": viewer}).status_code == 404
+
+    # Offered and accepted once more; this time the sender revokes.
+    client.post("/v1/grants", json={"handle": "receiver", "video_id": clip}, headers=hdr_o)
+    client.post(f"/v1/shared/{gid}/accept", headers=hdr_v)
+    assert _inbox_titles(viewer) == ["Basic step"]
+    assert client.delete(f"/v1/grants/{gid}", headers=hdr_o).status_code == 200
+    assert _inbox_titles(viewer) == [] and _offer_titles(viewer) == []
+    assert client.get(f"/v/{clip}", cookies={"ds_session": viewer}).status_code == 404
+
+    # The page shows offers and accepted shares in their own places.
+    client.post("/v1/grants", json={"handle": "receiver", "video_id": clip}, headers=hdr_o)
+    body = client.get("/me", cookies={"ds_session": viewer}).text.split("<body", 1)[1]
+    assert "<h2>Offers</h2>" in body and "Basic step" in body and "<h2>Shared with you</h2>" not in body
+    client.post(f"/v1/shared/{gid}/accept", headers=hdr_v)
+    body = client.get("/me", cookies={"ds_session": viewer}).text.split("<body", 1)[1]
+    assert "<h2>Shared with you</h2>" in body and "<h2>Offers</h2>" not in body
+
+
+def test_upgrade_keeps_what_people_already_had():
+    """A grants table from before offers existed gets the column, and every
+    share on it counts as accepted — nobody loses access on deploy."""
+    from sqlalchemy import text
+    from dsplatform.db import engine
+    from dsplatform.main import _migrate_grant_offers
+    owner, viewer = _user("olduser"), _user("oldviewer")
+    clip = _post(owner, "Old share", "private")
+    gid = client.post("/v1/grants", json={"handle": "oldviewer", "video_id": clip},
+                      headers={"Authorization": f"Bearer {owner}"}).json()["id"]
+    with engine.begin() as conn:
+        # Rebuild the table as it was before offers: same schema, no accepted_at.
+        conn.execute(text("""CREATE TABLE grants_old (
+            id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL, viewer_id INTEGER NOT NULL,
+            video_id INTEGER, created_at DATETIME, revoked_at DATETIME)"""))
+        conn.execute(text("INSERT INTO grants_old SELECT id, owner_id, viewer_id, video_id, created_at, revoked_at FROM grants"))
+        conn.execute(text("DROP TABLE grants"))
+        conn.execute(text("ALTER TABLE grants_old RENAME TO grants"))
+    engine.dispose()   # nothing cached from the table that no longer exists
+    _migrate_grant_offers()
+    assert _inbox_titles(viewer) == ["Old share"]
+    assert client.get("/v1/grants", headers={"Authorization": f"Bearer {owner}"}).json()["grants"][0]["accepted"] is True
+    # and a new share after the upgrade is an offer, as it should be
+    clip2 = _post(owner, "New share", "private")
+    client.post("/v1/grants", json={"handle": "oldviewer", "video_id": clip2},
+                headers={"Authorization": f"Bearer {owner}"})
+    assert _offer_titles(viewer) == ["New share"]
+    assert _inbox_titles(viewer) == ["Old share"]

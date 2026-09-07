@@ -82,6 +82,10 @@ class Grant(Base):
                                                  nullable=True, default=None,
                                                  index=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    # A share is an offer until the other person says yes. NULL here means
+    # it is still on the table; they can see who and what, not the clip.
+    accepted_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True,
+                                                            default=None)
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True,
                                                            default=None)
 
@@ -91,7 +95,11 @@ class Grant(Base):
 
     @property
     def active(self) -> bool:
-        return self.revoked_at is None
+        return self.revoked_at is None and self.accepted_at is not None
+
+    @property
+    def pending(self) -> bool:
+        return self.revoked_at is None and self.accepted_at is None
 
 
 class Group(Base):

@@ -40,6 +40,24 @@ def _migrate():
         migrate(url.replace("sqlite:////", "/").replace("sqlite:///", ""))
     except Exception as e:
         print(f"migration skipped: {e}", flush=True)
+    _migrate_grant_offers()
+
+
+def _migrate_grant_offers():
+    """Shares became offers. A grants table from before has no accepted_at;
+    add it, and mark what was already shared as accepted — those people had
+    it, and an upgrade must not take it away. Only a missing column triggers
+    the backfill, so a restart never accepts anyone's pending offers."""
+    from sqlalchemy import text
+    try:
+        with engine.begin() as conn:
+            cols = [row[1] for row in conn.execute(text("PRAGMA table_info(grants)"))]
+            if cols and "accepted_at" not in cols:
+                conn.execute(text("ALTER TABLE grants ADD COLUMN accepted_at DATETIME"))
+                conn.execute(text("UPDATE grants SET accepted_at = created_at"))
+                print("grants: added accepted_at, existing shares accepted", flush=True)
+    except Exception as e:
+        print(f"grant offers migration skipped: {e}", flush=True)
 
 
 @app.on_event("startup")
@@ -228,6 +246,7 @@ def _has_grant(db: Session, owner_id: int, viewer_id: int,
     q = select(Grant).where(Grant.owner_id == owner_id,
                             Grant.viewer_id == viewer_id,
                             Grant.revoked_at.is_(None),
+                            Grant.accepted_at.is_not(None),
                             Grant.video_id == video_id)
     return db.execute(q).scalars().first() is not None
 
@@ -480,7 +499,8 @@ def my_page(request: Request, u: User | None = Depends(optional_user),
         return templates.TemplateResponse(request, "handle.html", {"u": u})
     vids = sorted(u.videos, key=lambda v: v.created_at, reverse=True)
     return templates.TemplateResponse(request, "me.html",
-                                      {"u": u, "videos": vids, "shared": _shared_with(u, db)})
+                                      {"u": u, "videos": vids, "shared": _shared_with(u, db),
+                                       "offers": _shared_with(u, db, pending=True)})
 
 
 # ── browsing ───────────────────────────────────────────────────────────────
@@ -504,13 +524,16 @@ def _visible_videos(db: Session, me: User | None) -> list[Video]:
     return vids
 
 
-def _shared_with(me: User, db: Session) -> list[dict]:
-    """What other people have let you see, grouped by who. The inbound half
-    of a grant — the same list the app's inbox and the web's page draw from."""
+def _shared_with(me: User, db: Session, *, pending: bool = False) -> list[dict]:
+    """What other people have let you see, grouped by who — or, with
+    `pending`, what they have offered and you have not answered. The same
+    lists the app's inbox and the web's page draw from."""
     grants = db.execute(select(Grant).where(Grant.viewer_id == me.id,
                                             Grant.revoked_at.is_(None))).scalars().all()
     by_owner: dict[int, dict] = {}
     for g in grants:
+        if g.pending != pending:
+            continue
         # Anything the grant lets them see: a clip marked Shared, or one the
         # owner made public after (or before) sharing it. Only Private hides
         # it — the same rule _may_view enforces when they open it.
@@ -522,7 +545,8 @@ def _shared_with(me: User, db: Session) -> list[dict]:
             "display_name": g.owner.display_name,
             "avatar": f"/avatar/{g.owner.handle}.jpg" if g.owner.avatar_key else "",
             "videos": []})
-        # The grant id rides with the card: declining is revoking from this end.
+        # The grant id rides with the card: accepting, declining and stopping
+        # all name it.
         entry["videos"].append(dict(_card(v), grant_id=g.id))
     out = list(by_owner.values())
     for entry in out:
@@ -532,7 +556,20 @@ def _shared_with(me: User, db: Session) -> list[dict]:
 
 @app.get("/v1/shared")
 def shared_with_me(me: User = Depends(current_user), db: Session = Depends(get_db)):
-    return {"from": _shared_with(me, db)}
+    """`from` is what you accepted; `offers` is waiting on you."""
+    return {"from": _shared_with(me, db), "offers": _shared_with(me, db, pending=True)}
+
+
+@app.post("/v1/shared/{grant_id}/accept")
+def accept_share(grant_id: int, u: User = Depends(current_user),
+                 db: Session = Depends(get_db)):
+    g = db.get(Grant, grant_id)
+    if not g or g.viewer_id != u.id or g.revoked_at is not None:
+        raise HTTPException(404, "No such offer")
+    if g.accepted_at is None:
+        g.accepted_at = dt.datetime.utcnow()
+        db.commit()
+    return {"ok": True, "accepted": grant_id}
 
 
 # ── deletion ───────────────────────────────────────────────────────────────
@@ -616,6 +653,7 @@ def list_grants(u: User = Depends(current_user), db: Session = Depends(get_db)):
                         "avatar": f"/avatar/{g.viewer.handle}.jpg" if g.viewer.avatar_key else "",
                         "since": g.created_at.isoformat(),
                         "video_id": g.video_id,
+                        "accepted": g.accepted_at is not None,
                         "scope": g.video.title if g.video else "(video deleted)"}
                        for g in rows]}
 
@@ -627,7 +665,9 @@ def _grant(db: Session, owner: User, viewer: User, v: Video) -> Grant:
         Grant.owner_id == owner.id, Grant.viewer_id == viewer.id,
         Grant.video_id == v.id)).scalars().first()
     if existing:
-        existing.revoked_at = None
+        if existing.revoked_at is not None:
+            existing.revoked_at = None
+            existing.accepted_at = None      # ended once; ask again
         return existing
     g = Grant(owner_id=owner.id, viewer_id=viewer.id, video_id=v.id)
     db.add(g)
@@ -683,8 +723,9 @@ def add_grant(payload: dict, u: User = Depends(current_user),
 @app.delete("/v1/shared/{grant_id}")
 def decline_share(grant_id: int, u: User = Depends(current_user),
                   db: Session = Depends(get_db)):
-    """Turn down something shared with you. The same timestamp the owner's
-    revoke sets — the grant is over either way, and the owner sees it gone."""
+    """Turn down an offer, or stop a share you accepted. The same timestamp
+    the owner's revoke sets — the grant is over either way, and the owner
+    sees it gone."""
     g = db.get(Grant, grant_id)
     if not g or g.viewer_id != u.id:
         raise HTTPException(404, "No such share")

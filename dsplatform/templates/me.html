@@ -140,11 +140,28 @@ shows only what is marked public.</p>
   .glist .grm{background:none;border:none;color:var(--rose);cursor:pointer;
     font:600 .74rem var(--mono);text-transform:uppercase;letter-spacing:.04em}
 </style>
-{% if shared %}
+{% if offers %}
 <div class="share-box" style="margin-top:34px;margin-bottom:14px">
+  <h2>Offers</h2>
+  <p class="sub" style="margin:0">Someone wants to share a clip with you. Accept it to
+  watch it here; decline and it goes away.</p>
+</div>
+<ul class="glist" style="max-width:520px;margin-bottom:26px">
+  {% for who in offers %}{% for v in who.videos %}
+  <li data-offer="{{ v.grant_id }}">
+    <span class="gwho"><span class="gname">{{ v.title }}</span>
+      <div class="gscope">from <a href="/@{{ who.handle }}" style="color:var(--teal)">{{ who.display_name }}</a>{% if v.has_video %} &middot; video{% endif %}{% if v.dancers > 1 %} &middot; two dancers{% endif %}</div></span>
+    <button class="grm accept" style="color:#3ad6b0">Accept</button>
+    <button class="grm decline">Decline</button>
+  </li>
+  {% endfor %}{% endfor %}
+</ul>
+{% endif %}
+{% if shared %}
+<div class="share-box" style="margin-top:{{ '10px' if offers else '34px' }};margin-bottom:14px">
   <h2>Shared with you</h2>
-  <p class="sub" style="margin:0">Clips other dancers let you see — only the ones they
-  chose, for as long as they choose. Decline one and it leaves this page.</p>
+  <p class="sub" style="margin:0">Clips you accepted. Stop one and it leaves this page —
+  the other dancer can end it too, at any time.</p>
 </div>
 <div class="grid">
   {% for who in shared %}{% for v in who.videos %}
@@ -154,7 +171,7 @@ shows only what is marked public.</p>
       <div class="t">{{ v.title }}</div>
       <div class="s">from <a href="/@{{ who.handle }}" style="color:var(--teal)">{{ who.display_name }}</a>
         &middot; {{ (v.frames // v.fps) if v.fps else 0 }}s{% if v.has_video %} &middot; video{% endif %}{% if v.dancers > 1 %} &middot; two dancers{% endif %}</div>
-      <button class="decline" style="margin-top:8px;background:none;border:1px solid var(--line);color:var(--rose);border-radius:999px;padding:4px 11px;font:600 .74rem var(--font-body);cursor:pointer">Decline</button>
+      <button class="decline" style="margin-top:8px;background:none;border:1px solid var(--line);color:var(--rose);border-radius:999px;padding:4px 11px;font:600 .74rem var(--font-body);cursor:pointer">Stop</button>
     </div>
   </div>
   {% endfor %}{% endfor %}
@@ -329,12 +346,23 @@ document.getElementById('gcreate').onclick = async () => {
 };
 loadGroups();
 
-// ── declining what was shared with you ─────────────────────────────────────
+// ── offers: yes or no; shares: stop ────────────────────────────────────────
+document.querySelectorAll('li[data-offer]').forEach(li => {
+  li.querySelector('.accept').onclick = async () => {
+    const r = await fetch(`/v1/shared/${li.dataset.offer}/accept`, { method: 'POST' });
+    if (r.ok) location.reload(); else alert('Could not accept that one.');
+  };
+  li.querySelector('.decline').onclick = async () => {
+    const r = await fetch(`/v1/shared/${li.dataset.offer}`, { method: 'DELETE' });
+    if (r.ok) li.remove(); else alert('Could not decline that one.');
+  };
+});
 document.querySelectorAll('.card[data-grant] .decline').forEach(b => {
   b.onclick = async () => {
     const card = b.closest('.card');
+    if (!confirm('Stop this share? You can only get it back if they share it again.')) return;
     const r = await fetch(`/v1/shared/${card.dataset.grant}`, { method: 'DELETE' });
-    if (r.ok) card.remove(); else alert('Could not decline that one.');
+    if (r.ok) card.remove(); else alert('Could not stop that one.');
   };
 });
 
@@ -354,9 +382,9 @@ async function loadGrants() {
     const av = g.avatar
       ? `<img class="gav" src="${g.avatar}" alt="">`
       : `<span class="gav">${(g.display_name || g.handle)[0].toUpperCase()}</span>`;
-    li.innerHTML = `${av}<span class="gwho"><span class="gname">@${g.handle}</span>
+    li.innerHTML = `${av}<span class="gwho"><span class="gname">@${g.handle}${g.accepted ? '' : ' <span style="color:var(--gold);font-weight:500">· waiting</span>'}</span>
       <div class="gscope">${g.scope}</div></span>
-      <button class="grm" data-id="${g.id}">Remove</button>`;
+      <button class="grm" data-id="${g.id}">${g.accepted ? 'Revoke' : 'Withdraw'}</button>`;
     li.querySelector('.grm').onclick = async e => {
       await fetch(`/v1/grants/${e.target.dataset.id}`, { method: 'DELETE' });
       loadGrants();
