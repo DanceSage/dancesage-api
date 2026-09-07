@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ v.title }} · {{ u.display_name }}{% endblock %}
 {% block body %}
-{% if me and me.id == u.id %}{% include '_vmenu_css.html' %}{% endif %}
+{% if can_share %}{% include '_vmenu_css.html' %}{% endif %}
 <style>
   .player{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
   /* The stage takes the video's own shape rather than the column's. A phone clip
@@ -70,16 +70,16 @@
       <span class="chip">{{ v.seconds }}s</span>
       {% if v.dancers > 1 %}<span class="chip">partner</span>{% endif %}
     </div>
-    {% if me and me.id == u.id %}
-    {# Your own clip: the same control as on your page, already open to you. #}
+    {% if can_share %}
+    {# Your own clip: the same control as on your page. Someone's public clip:
+       pass it on. A private clip shared with you: nothing to click. #}
+    {% set share_only = me.id != u.id %}
     <div class="card" style="overflow:visible;background:none;border:none;padding:0;margin:0 0 14px">
       {% include '_vmenu.html' %}
     </div>
     {% endif %}
     <p class="sub" style="font-size:.94rem">{{ v.note }}</p>
-    <button class="chip on" style="border:none;cursor:pointer;font-family:var(--mono)"
-      onclick="navigator.clipboard.writeText(location.href);this.textContent='Link copied'">
-      Share this video</button>
+
     {% if more %}
     <div style="margin-top:26px">
       <div class="lbl" style="margin-bottom:10px">More from {{ u.display_name }}</div>
@@ -91,7 +91,7 @@
   </div>
 </div>
 {% endblock %}
-{% block js %}{% if me and me.id == u.id %}{% include '_vmenu_js.html' %}{% endif %}<script>
+{% block js %}{% if can_share %}{% include '_vmenu_js.html' %}{% endif %}<script>
 const HASVID = {{ 'true' if v.has_video else 'false' }};
 const POSE2D = "{{ v.pose2d_key }}";
 const sk = new Skeleton(document.getElementById('cv'), {yaw: 17*Math.PI/180});

@@ -298,3 +298,28 @@ def test_a_group_has_a_wall_and_members_share_back():
     assert "Share back" in page and "Enchufla — my attempt" not in page
     assert client.get(f"/g/{gid}", cookies={"ds_session": other}).status_code == 404
     assert "Thursday salsa" in client.get("/me", cookies={"ds_session": leo}).text
+
+
+def test_passing_on_a_video_you_were_shown():
+    owner, andy, zoe = _user("maker"), _user("andyy"), _user("zoey")
+    hdr = lambda t: {"Authorization": f"Bearer {t}"}
+    public = _post(owner, "Open class", "public")
+    private = _post(owner, "Closed class", "private")
+    client.post("/v1/grants", json={"handle": "andyy", "video_id": private}, headers=hdr(owner))
+    _accept_all(andy)
+
+    # A private clip shared with you is not yours to pass on — no button, no route.
+    assert client.post("/v1/grants", json={"handle": "zoey", "video_id": private}, headers=hdr(andy)).status_code == 404
+    assert 'class="vmenu"' not in client.get(f"/v/{private}", cookies={"ds_session": andy}).text
+
+    # A public clip you can pass on: Zoe gets the offer from Andy, and can open it.
+    page = client.get(f"/v/{public}", cookies={"ds_session": andy}).text
+    assert 'class="vmenu"' in page and "Share with a dancer or a group" in page and 'class="vopt"' not in page
+    assert client.post("/v1/grants", json={"handle": "zoey", "video_id": public}, headers=hdr(andy)).status_code == 200
+    assert _inbox(zoe)["offers"][0]["handle"] == "andyy"
+    _accept_all(zoe)
+    assert _inbox_titles(zoe) == ["Open class"]
+    # …until the owner makes it private again.
+    client.post(f"/v1/videos/{public}/visibility", json={"visibility": "private"}, headers=hdr(owner))
+    assert _inbox_titles(zoe) == []
+    assert client.get(f"/v/{public}", cookies={"ds_session": zoe}).status_code == 404

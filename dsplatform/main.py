@@ -205,8 +205,12 @@ def video(video_id: int, request: Request, me: User | None = Depends(optional_us
         raise HTTPException(404, "No such video")
     more = [x for x in v.user.videos
             if x.id != v.id and _may_view(x, me, db)][:6]
+    # Your own: the full menu. Someone else's public one: share it on. A private
+    # one shared with you: nothing — it is theirs to share, not yours.
+    can_share = bool(me) and (v.user_id == me.id or v.visibility == "public")
     return templates.TemplateResponse(request, "video.html",
-                                      {"v": v, "u": v.user, "more": more})
+                                      {"v": v, "u": v.user, "more": more,
+                                       "can_share": can_share})
 
 
 @app.get("/pose/{key:path}.json")
@@ -551,7 +555,10 @@ def _shared_with(me: User, db: Session, *, pending: bool = False) -> list[dict]:
         if g.pending != pending:
             continue
         v = g.video
-        if v is None or v.user_id != g.owner_id:
+        if v is None:
+            continue
+        # A share of someone else's public video is fine while it is public.
+        if v.user_id != g.owner_id and v.visibility != "public":
             continue
         entry = by_owner.setdefault(g.owner_id, {
             "handle": g.owner.handle,
@@ -705,7 +712,7 @@ def add_grant(payload: dict, u: User = Depends(current_user),
     if video_id is None:
         raise HTTPException(400, "video_id required — access is granted per video")
     v = db.get(Video, int(video_id))
-    if not v or v.user_id != u.id:
+    if not v or (v.user_id != u.id and v.visibility != "public"):
         raise HTTPException(404, "No such video")
 
     viewers: list[User] = []

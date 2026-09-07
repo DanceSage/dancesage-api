@@ -95,8 +95,9 @@ document.querySelectorAll('.vmenu').forEach(menu => {
   };
   menu.querySelector('.share-manage').onclick = e => { e.preventDefault(); openGroups(); };
 
-  // deletion
-  menu.querySelector('.vdel').onclick = async () => {
+  // deletion — owners only
+  const del = menu.querySelector('.vdel');
+  if (del) del.onclick = async () => {
     if (!confirm(`Delete \u201c${menu.dataset.title}\u201d?\n\n`
       + `The video and its skeleton are removed from Dance Sage. `
       + `Anything saved on your phone is not affected. This cannot be undone.`)) return;

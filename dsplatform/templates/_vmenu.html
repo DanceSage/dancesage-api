@@ -2,6 +2,11 @@
          public or private, share it, delete it. Who has it shows underneath. #}
       <div class="vmenu" data-video="{{ v.id }}" data-title="{{ v.title }}">
         <ul class="share-who share-who-card" title="Who can see this one"></ul>
+        {% if share_only %}
+        <button class="vbtn state-public"><span class="dot"></span><span class="vlabel">Share</span><span class="caret">&#9662;</span></button>
+        <div class="vpanel">
+          <button class="vshare">Share with a dancer or a group&hellip;</button>
+        {% else %}
         <button class="vbtn state-{{ 'public' if v.visibility == 'public' else 'private' }}">
           <span class="dot"></span><span class="vlabel">{{ 'Public' if v.visibility == 'public' else 'Private' }}</span><span class="caret">&#9662;</span>
         </button>
@@ -11,6 +16,7 @@
           <div class="vsep"></div>
           <button class="vshare">Share&hellip;</button>
           <button class="vdel">Delete</button>
+        {% endif %}
           <div class="sharebox">
             <div class="share-title">Share with a dancer</div>
             <div class="share-row">

@@ -79,4 +79,10 @@ def test_group_page_scripts_run(tmp_path):
 def test_video_page_scripts_run_for_the_owner(tmp_path):
     me = _User()
     v = _Video(1)
-    _run(_scripts("video.html", v=v, u=me, me=me, more=[], offer_count=0), tmp_path)
+    _run(_scripts("video.html", v=v, u=me, me=me, more=[], offer_count=0, can_share=True), tmp_path)
+
+
+def test_video_page_scripts_run_for_a_visitor_sharing_a_public_clip(tmp_path):
+    me = _User(); owner = _User(); owner.id = 2
+    v = _Video(1); v.visibility = "public"
+    _run(_scripts("video.html", v=v, u=owner, me=me, more=[], offer_count=0, can_share=True), tmp_path)
