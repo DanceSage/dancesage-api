@@ -1,8 +1,10 @@
 <script>
-// ── one menu per video: visibility, sharing, deletion ──────────────────────
+// ── one menu per video: public/private, share, delete ──────────────────────
 // Shared by the profile and the video page. A page that wants to draw its own
 // lists on top sets window.renderLedger(grants) / window.renderGroups(groups).
-const LABEL = { public: 'Public', granted: 'Shared', private: 'Private' };
+const LABEL = { public: 'Public', private: 'Private' };
+let GROUPS = [];
+const groupOffers = [];
 
 document.querySelectorAll('.vmenu').forEach(menu => {
   const id     = menu.dataset.video;
@@ -11,7 +13,8 @@ document.querySelectorAll('.vmenu').forEach(menu => {
   const shareBox = menu.querySelector('.sharebox');
   const input  = menu.querySelector('.sharebox input');
   const msg    = menu.querySelector('.share-msg');
-  const who    = menu.querySelector('.share-who');
+  const who    = menu.querySelector('.sharebox .share-who');
+  const pick   = menu.querySelector('.share-pick');
 
   const close = () => { panel.classList.remove('open'); shareBox.classList.remove('open'); };
 
@@ -28,7 +31,7 @@ document.querySelectorAll('.vmenu').forEach(menu => {
   document.addEventListener('click', close);
   document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
 
-  // visibility
+  // public or private — sharing is separate, and survives either
   panel.querySelectorAll('.vopt').forEach(opt => {
     opt.onclick = async () => {
       const want = opt.dataset.set;
@@ -43,7 +46,7 @@ document.querySelectorAll('.vmenu').forEach(menu => {
     };
   });
 
-  // sharing — reveals its own row rather than opening another screen
+  // share — a person, or a group; who has it, with a way to take it back
   menu.querySelector('.vshare').onclick = () => {
     shareBox.classList.toggle('open');
     if (shareBox.classList.contains('open')) { refresh(); input.focus(); }
@@ -55,52 +58,52 @@ document.querySelectorAll('.vmenu').forEach(menu => {
     who.innerHTML = '';
     grants.filter(g => String(g.video_id) === id).forEach(g => {
       const li = document.createElement('li');
-      li.innerHTML = `@${g.handle}<button title="Remove">&times;</button>`;
+      li.innerHTML = `@${g.handle}${g.accepted ? '' : ' · waiting'}<button title="${g.accepted ? 'Revoke' : 'Withdraw'}">&times;</button>`;
       li.querySelector('button').onclick = async () => {
         await fetch(`/v1/grants/${g.id}`, { method: 'DELETE' });
-        refresh();
+        refresh(); loadGrants();
       };
       who.appendChild(li);
     });
   }
-  async function add() {
+  async function shareWith(body) {
     msg.textContent = '';
-    const h = input.value.trim().replace(/^@/, '');
-    if (!h) return;
     const r = await fetch('/v1/grants', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ handle: h, video_id: Number(id) })
+      body: JSON.stringify(Object.assign({ video_id: Number(id) }, body))
     });
-    if (r.ok) {
-      input.value = '';
-      // sharing a clip marks it Shared; keep the button honest
-      btn.className = 'vbtn state-granted';
-      menu.querySelector('.vlabel').textContent = LABEL.granted;
-      refresh(); loadGrants();
-    } else msg.textContent = (await r.json()).detail || 'Could not add them.';
+    if (r.ok) { input.value = ''; refresh(); loadGrants(); }
+    else msg.textContent = (await r.json()).detail || 'Could not share it.';
   }
-  menu.querySelector('.share-go').onclick = add;
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+  const addPerson = () => {
+    const h = input.value.trim().replace(/^@/, '');
+    if (h) shareWith({ handle: h });
+  };
+  menu.querySelector('.share-go').onclick = addPerson;
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') addPerson(); });
 
-  // a group, when you have any: one click, one grant per member
-  const groupRow = menu.querySelector('.share-group');
-  const pick = menu.querySelector('.share-pick');
   function offerGroups() {
-    pick.innerHTML = GROUPS.map(g => `<option value="${g.id}">${g.name} (${g.members.length})</option>`).join('');
-    groupRow.hidden = GROUPS.length === 0;
+    pick.innerHTML = '<option value="">a group…</option>'
+      + GROUPS.map(g => `<option value="${g.id}">${g.name} (${g.members.length})</option>`).join('');
   }
   groupOffers.push(offerGroups);
-  menu.querySelector('.share-go-group').onclick = async () => {
-    msg.textContent = '';
-    const r = await fetch('/v1/grants', {
+  menu.querySelector('.share-go-group').onclick = () => {
+    if (!pick.value) { msg.textContent = GROUPS.length ? 'Pick a group.' : 'No groups yet — press + to make one.'; return; }
+    shareWith({ group_id: Number(pick.value) });
+  };
+  menu.querySelector('.share-new-group').onclick = async () => {
+    const name = prompt('Name for the group (a class, a team):');
+    if (!name) return;
+    const raw = prompt('Their handles, separated by commas:') || '';
+    const handles = raw.split(/[,\s]+/).map(h => h.replace(/^@/, '')).filter(Boolean);
+    const r = await fetch('/v1/groups', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ group_id: Number(pick.value), video_id: Number(id) })
+      body: JSON.stringify({ name, handles })
     });
-    if (r.ok) {
-      btn.className = 'vbtn state-granted';
-      menu.querySelector('.vlabel').textContent = LABEL.granted;
-      refresh(); loadGrants();
-    } else msg.textContent = (await r.json()).detail || 'Could not share with that group.';
+    if (!r.ok) { msg.textContent = (await r.json()).detail || 'Could not create the group.'; return; }
+    const g = await r.json();
+    await loadGroups();
+    pick.value = String(g.id);
   };
 
   // deletion
@@ -114,10 +117,7 @@ document.querySelectorAll('.vmenu').forEach(menu => {
   };
 });
 
-// ── groups ─────────────────────────────────────────────────────────────────
-let GROUPS = [];
-const groupOffers = [];
-const grouplist = document.getElementById('grouplist');
+// ── groups: loaded once, offered to every menu ─────────────────────────────
 async function loadGroups() {
   const r = await fetch('/v1/groups');
   if (!r.ok) return;
@@ -126,4 +126,21 @@ async function loadGroups() {
   if (window.renderGroups) window.renderGroups(GROUPS);
 }
 loadGroups();
+
+// ── who has what: chips on every card, and whatever the page adds ─────────
+async function loadGrants() {
+  const r = await fetch('/v1/grants');
+  if (!r.ok) return;
+  const { grants } = await r.json();
+  document.querySelectorAll('.vmenu').forEach(menu => {
+    const ul = menu.querySelector('.share-who-card');
+    if (!ul) return;
+    const mine = grants.filter(g => String(g.video_id) === menu.dataset.video);
+    ul.innerHTML = mine.map(g =>
+      `<li title="${g.accepted ? 'can see this' : 'has not accepted yet'}" style="${g.accepted ? '' : 'opacity:.6'}">@${g.handle}${g.accepted ? '' : ' · waiting'}</li>`).join('');
+    ul.style.display = mine.length ? '' : 'none';
+  });
+  if (window.renderLedger) window.renderLedger(grants);
+}
+loadGrants();
 </script>

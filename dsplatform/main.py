@@ -122,7 +122,13 @@ def _nav_user(request: Request) -> dict:
         return {"me": None}
     db = SessionLocal()
     try:
-        return {"me": db.get(User, uid)}
+        me = db.get(User, uid)
+        offers = 0
+        if me:
+            offers = len(db.execute(select(Grant).where(
+                Grant.viewer_id == me.id, Grant.revoked_at.is_(None),
+                Grant.accepted_at.is_(None))).scalars().all())
+        return {"me": me, "offer_count": offers}
     finally:
         db.close()
 
@@ -265,8 +271,8 @@ def _may_view(v: Video | None, u: User | None, db: Session | None = None) -> boo
         return False
     if v.user_id == u.id:
         return True
-    return (v.visibility == "granted" and db is not None
-            and _has_grant(db, v.user_id, u.id, v.id))
+    # Private for everyone else — except the people it was shared with.
+    return db is not None and _has_grant(db, v.user_id, u.id, v.id)
 
 
 PLAYBACK_TTL = 3600
@@ -498,8 +504,11 @@ def my_page(request: Request, u: User | None = Depends(optional_user),
     if not u.handle:
         return templates.TemplateResponse(request, "handle.html", {"u": u})
     vids = sorted(u.videos, key=lambda v: v.created_at, reverse=True)
+    shared_ids = {g.video_id for g in db.execute(select(Grant).where(
+        Grant.owner_id == u.id, Grant.revoked_at.is_(None))).scalars().all()}
     return templates.TemplateResponse(request, "me.html",
-                                      {"u": u, "videos": vids, "shared": _shared_with(u, db),
+                                      {"u": u, "videos": vids, "shared_ids": shared_ids,
+                                       "shared": _shared_with(u, db),
                                        "offers": _shared_with(u, db, pending=True)})
 
 
@@ -534,11 +543,8 @@ def _shared_with(me: User, db: Session, *, pending: bool = False) -> list[dict]:
     for g in grants:
         if g.pending != pending:
             continue
-        # Anything the grant lets them see: a clip marked Shared, or one the
-        # owner made public after (or before) sharing it. Only Private hides
-        # it — the same rule _may_view enforces when they open it.
         v = g.video
-        if v is None or v.visibility == "private" or v.user_id != g.owner_id:
+        if v is None or v.user_id != g.owner_id:
             continue
         entry = by_owner.setdefault(g.owner_id, {
             "handle": g.owner.handle,
@@ -706,9 +712,6 @@ def add_grant(payload: dict, u: User = Depends(current_user),
     else:
         raise HTTPException(400, "handle or group_id required")
 
-    # Sharing a clip is what makes it shared; asking twice would be a trap.
-    if v.visibility == "private":
-        v.visibility = "granted"
     grants = [_grant(db, u, viewer, v) for viewer in viewers]
     db.commit()
     for g in grants:
@@ -856,8 +859,8 @@ def set_visibility(video_id: int, payload: dict,
         raise HTTPException(404, "Not your video")
     want = payload.get("visibility")
     if want not in ("private", "granted", "public"):
-        raise HTTPException(400, "visibility must be private, granted or public")
-    v.visibility = want
+        raise HTTPException(400, "visibility must be private or public")
+    v.visibility = "public" if want == "public" else "private"
     db.commit()
     return {"ok": True, "visibility": v.visibility}
 

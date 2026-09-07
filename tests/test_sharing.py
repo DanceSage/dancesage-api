@@ -82,13 +82,16 @@ def test_a_public_video_shared_by_grant_still_reaches_the_inbox():
     page = client.get("/me", cookies={"ds_session": viewer}).text
     # In the body, after the page's own content — not smuggled into <title>.
     body = page.split("<body", 1)[1]
-    assert body.index("Who can see what") < body.index("Shared with you")
+    assert body.index('<div class="grid">') < body.index("Shared with you")
     assert "Social dancing" in body and "Rehearsal" in body and "Not for you" not in body
 
-    # Making a shared clip private again takes it out of the inbox.
-    client.post(f"/v1/videos/{private}/visibility", json={"visibility": "private"},
+    # Private or public, what was shared stays shared; only revoking ends it.
+    client.post(f"/v1/videos/{public}/visibility", json={"visibility": "private"},
                 headers={"Authorization": f"Bearer {owner}"})
-    assert _inbox_titles(viewer) == ["Social dancing"]
+    assert sorted(_inbox_titles(viewer)) == ["Rehearsal", "Social dancing"]
+    assert client.get(f"/v/{public}", cookies={"ds_session": viewer}).status_code == 200
+    # …and nobody else sees a private clip.
+    assert client.get(f"/v/{public}", cookies={"ds_session": _user("passerby")}).status_code == 404
 
 
 def test_groups_share_with_everyone_at_once_and_anyone_can_decline():
@@ -108,10 +111,11 @@ def test_groups_share_with_everyone_at_once_and_anyone_can_decline():
                        headers={"Authorization": f"Bearer {teacher}"}).status_code == 404
     assert client.get("/v1/groups", headers={"Authorization": f"Bearer {maya}"}).json()["groups"] == []
 
-    # One share, three grants — and the clip is marked Shared.
+    # One share, three grants — and the clip stays private to everyone else.
     r = client.post("/v1/grants", json={"group_id": gid, "video_id": clip},
                     headers={"Authorization": f"Bearer {teacher}"})
     assert r.status_code == 200, r.text
+    assert client.get("/v1/me", headers={"Authorization": f"Bearer {teacher}"}).json()["videos"][0]["visibility"] == "private"
     assert sorted(g["handle"] for g in r.json()["granted"]) == ["leo", "maya", "zoe"]
     for who in (maya, leo, zoe):
         assert _offer_titles(who) == ["Cross body lead"]
@@ -189,10 +193,11 @@ def test_the_whole_life_of_a_share():
     # The page shows offers and accepted shares in their own places.
     client.post("/v1/grants", json={"handle": "receiver", "video_id": clip}, headers=hdr_o)
     body = client.get("/me", cookies={"ds_session": viewer}).text.split("<body", 1)[1]
-    assert "<h2>Offers</h2>" in body and "Basic step" in body and "<h2>Shared with you</h2>" not in body
+    assert "Sender shared a video with you" in body and "Basic step" in body
+    assert "Shared with you</h2>" not in body
     client.post(f"/v1/shared/{gid}/accept", headers=hdr_v)
     body = client.get("/me", cookies={"ds_session": viewer}).text.split("<body", 1)[1]
-    assert "<h2>Shared with you</h2>" in body and "<h2>Offers</h2>" not in body
+    assert "Shared with you</h2>" in body and "shared a video with you" not in body
 
 
 def test_upgrade_keeps_what_people_already_had():
@@ -223,3 +228,28 @@ def test_upgrade_keeps_what_people_already_had():
                 headers={"Authorization": f"Bearer {owner}"})
     assert _offer_titles(viewer) == ["New share"]
     assert _inbox_titles(viewer) == ["Old share"]
+
+
+def test_the_video_menu_lives_on_the_video_page_too_and_stats_count_shared():
+    owner, viewer = _user("host"), _user("guest")
+    clip = _post(owner, "Sombrero", "private")
+    client.post("/v1/grants", json={"handle": "guest", "video_id": clip},
+                headers={"Authorization": f"Bearer {owner}"})
+    _accept_all(viewer)
+
+    # The owner's page counts it as shared, not private; the card carries the
+    # chip list that the menu paints.
+    page = client.get("/me", cookies={"ds_session": owner}).text
+    body = page.split("<body", 1)[1]
+    assert "<span>shared</span>" in body and "<span>private</span>" in body
+    assert body.split("<script", 1)[0].count("share-who-card") == 1
+    # the offer reads like a notification for the receiver, and the nav counts it
+    clip2 = _post(owner, "Copa", "private")
+    client.post("/v1/grants", json={"handle": "guest", "video_id": clip2},
+                headers={"Authorization": f"Bearer {owner}"})
+    guest = client.get("/me", cookies={"ds_session": viewer}).text
+    assert "Host shared a video with you" in guest and "1 to accept" in guest
+
+    # On the clip's own page the owner gets the menu; the viewer does not.
+    assert 'class="vmenu"' in client.get(f"/v/{clip}", cookies={"ds_session": owner}).text
+    assert 'class="vmenu"' not in client.get(f"/v/{clip}", cookies={"ds_session": viewer}).text

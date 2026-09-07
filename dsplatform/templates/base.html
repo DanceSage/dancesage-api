@@ -112,13 +112,14 @@
       {# Clicking your face opens a menu. Signing out has to be reachable from
          every page, not only from the one that happens to carry the link. #}
       <span class="me-wrap">
-        <a class="avatar" href="/me" id="meBtn" title="Your profile" aria-label="Your profile">
+        <a class="avatar" href="/me" id="meBtn" title="Your profile" aria-label="Your profile" style="position:relative">
           {% if me.avatar_key %}<img src="/avatar/{{ me.handle }}.jpg" alt="">
           {% else %}<span>{{ (me.display_name or me.handle or '?')[0]|upper }}</span>{% endif %}
+          {% if offer_count %}<b style="position:absolute;top:-4px;right:-6px;background:var(--gold);color:#241a06;border-radius:999px;font:700 .66rem var(--mono);padding:1px 6px;line-height:1.4">{{ offer_count }}</b>{% endif %}
         </a>
         <div class="me-menu" id="meMenu">
           <div class="hd">@{{ me.handle }}</div>
-          <a href="/me">Your profile</a>
+          <a href="/me">Your profile{% if offer_count %} <span style="color:var(--gold)">· {{ offer_count }} to accept</span>{% endif %}</a>
           <a class="out" href="/signout">Sign out</a>
         </div>
       </span>
