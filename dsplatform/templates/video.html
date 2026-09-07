@@ -15,11 +15,12 @@
   #stage:not(.has-video) canvas{width:100%;aspect-ratio:3/4;max-height:72vh}
   .player canvas.drag{cursor:grabbing}
   .ctl{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
-  .ctl button{background:var(--gold);border:none;color:#241a06;font:600 .86rem system-ui;
-    padding:8px 16px;border-radius:9px;cursor:pointer;min-width:76px}
+  .ctl button{background:none;border:none;color:var(--text);font:600 1rem system-ui;
+    padding:6px 8px;border-radius:9px;cursor:pointer;min-width:34px}
+  .ctl button:hover{color:var(--gold)}
   .ctl input[type=range]{accent-color:var(--gold)}
   #scrub{flex:1;min-width:120px}
-  .fno{font-family:var(--mono);font-size:.8rem;color:var(--muted);min-width:74px}
+  .fno{font-family:var(--mono);font-size:.8rem;color:var(--muted);min-width:38px}
   .lbl{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;
     display:flex;align-items:center;gap:7px;white-space:nowrap}
   /* The switches over the picture: one pill per layer, lit in its own colour. */
@@ -47,11 +48,12 @@
       {% endif %}
       <canvas id="cv" style="{% if v.has_video %}position:absolute;inset:0;width:100%;height:100%{% endif %}"></canvas>
     </div>
-    <div class="ctl">
-      <button id="play">Pause</button>
+    {# The same row as the app: play, the scrubber, the time, speed. #}
+    <div class="ctl" style="flex-wrap:nowrap">
+      <button id="play" title="Pause" aria-label="Pause">&#10074;&#10074;</button>
       <input id="scrub" type="range" min="0" value="0">
-      <span class="fno" id="fno">0</span>
-      <label class="lbl">Speed <input id="spd" type="range" min="0.25" max="2" step="0.25" value="1" style="width:92px"></label>
+      <span class="fno" id="fno">0:00</span>
+      <label class="lbl" title="Speed">&#9201; <input id="spd" type="range" min="0.25" max="2" step="0.25" value="1" style="width:84px"></label>
     </div>
   </div>
   <div>
@@ -89,7 +91,8 @@
 const HASVID = {{ 'true' if v.has_video else 'false' }};
 const POSE2D = "{{ v.pose2d_key }}";
 const sk = new Skeleton(document.getElementById('cv'), {yaw: 17*Math.PI/180});
-sk.onframe = (f,n) => { document.getElementById('fno').textContent = f+' / '+n;
+const clock = t => Math.floor(t/60) + ':' + String(Math.floor(t%60)).padStart(2,'0');
+sk.onframe = (f,n) => { document.getElementById('fno').textContent = clock(sk.timeAtFrame(f));
                         document.getElementById('scrub').value = f; };
 // with video present the 2D track is what lines up with the pixels
 const POSE_URL = (HASVID && POSE2D) ? '/pose/' + POSE2D + '.json' : '/pose/{{ v.pose_key }}.json';
@@ -103,11 +106,11 @@ sk.load(POSE_URL).then(d => {
   };
 });
 document.getElementById('play').onclick = e => {
-  if (sk.playing) { sk.pause(); e.target.textContent = 'Play'; }
-  else { sk.play(); e.target.textContent = 'Pause'; }
+  if (sk.playing) { sk.pause(); e.target.innerHTML = '&#9654;'; }
+  else { sk.play(); e.target.innerHTML = '&#10074;&#10074;'; }
 };
 document.getElementById('scrub').oninput = e => {
-  sk.pause(); document.getElementById('play').textContent = 'Play'; sk.seek(+e.target.value);
+  sk.pause(); document.getElementById('play').innerHTML = '&#9654;'; sk.seek(+e.target.value);
 };
 if (!HASVID) {
   const chip = document.querySelector('button.layer[data-layer="skel"]');
@@ -149,11 +152,11 @@ if (HASVID) {
   });
   sk.pause();
   document.getElementById('play').onclick = e => {
-    if (vid.paused) { vid.play(); e.target.textContent = 'Pause'; }
-    else { vid.pause(); e.target.textContent = 'Play'; }
+    if (vid.paused) { vid.play(); e.target.innerHTML = '&#10074;&#10074;'; }
+    else { vid.pause(); e.target.innerHTML = '&#9654;'; }
   };
   document.getElementById('scrub').oninput = e => {
-    vid.pause(); document.getElementById('play').textContent = 'Play';
+    vid.pause(); document.getElementById('play').innerHTML = '&#9654;';
     vid.currentTime = sk.timeAtFrame(+e.target.value);
   };
   apply();
