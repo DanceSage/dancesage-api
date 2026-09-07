@@ -1,0 +1,58 @@
+<style>
+  /* The card clips its contents so the skeleton corners stay rounded — which
+     also clipped the dropdown out of existence. The canvas rounds itself
+     instead, and a card with an open menu rises above its neighbours. */
+  .card{overflow:visible}
+  .card canvas{border-radius:13px 13px 0 0}
+  .card:has(.vpanel.open){position:relative;z-index:50}
+  .vmenu{position:relative;margin-top:10px}
+  .vbtn{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);
+    border:1px solid var(--line);color:var(--text);border-radius:999px;
+    padding:5px 11px;font:600 .78rem var(--font-body);cursor:pointer}
+  .vbtn:hover{border-color:rgba(245,208,111,.45)}
+  .vbtn .caret{color:var(--faint);font-size:.7rem}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
+  .state-public .dot,.dot.pub{background:#3ad6b0}
+  .state-granted .dot,.dot.shr{background:var(--gold)}
+  .state-private .dot,.dot.prv{background:var(--faint)}
+  .vpanel{position:absolute;left:0;top:calc(100% + 7px);min-width:190px;z-index:40;
+    background:#14181b;border:1px solid rgba(255,255,255,.14);border-radius:12px;
+    padding:6px;display:none;box-shadow:0 16px 40px rgba(0,0,0,.55)}
+  .vpanel.open{display:block}
+  .vpanel button{display:flex;align-items:center;gap:8px;width:100%;background:none;
+    border:none;color:var(--text);text-align:left;padding:8px 10px;border-radius:8px;
+    font:500 .85rem var(--font-body);cursor:pointer}
+  .vpanel button:hover{background:rgba(255,255,255,.07)}
+  .vpanel .vdel{color:var(--rose)}
+  .vsep{height:1px;background:rgba(255,255,255,.10);margin:5px 2px}
+  .sharebox{display:none;padding:6px 4px 2px;border-top:1px solid rgba(255,255,255,.10);
+    margin-top:5px}
+  .sharebox.open{display:block}
+  .share-row{display:flex;gap:5px;align-items:center}
+  .share-row .at{color:var(--faint);font-size:.85rem}
+  .share-row input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);
+    color:var(--text);padding:6px 9px;border-radius:7px;font-size:.8rem}
+  .share-go{background:var(--gold)!important;color:#241a06!important;
+    font:600 .72rem var(--font-body)!important;padding:6px 11px!important;
+    border-radius:7px!important;width:auto!important;flex:none}
+  .share-msg{font-size:.72rem;color:var(--rose);min-height:1em;margin-top:5px}
+  .share-who{list-style:none;margin:6px 0 2px;padding:0;display:flex;flex-wrap:wrap;gap:5px}
+  .share-who li{display:flex;align-items:center;gap:5px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:999px;padding:3px 5px 3px 9px;font-size:.72rem}
+  .share-who li button{width:auto;padding:0 3px;color:var(--rose);font-size:.85rem}
+  .share-box{border:1px solid var(--line);background:var(--panel);border-radius:16px;
+    padding:20px 22px;margin:0 0 30px}
+  .share-box h2{font-size:1.05rem;margin:0 0 6px}
+  .glist{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px;max-width:420px}
+  .glist li{display:flex;align-items:center;gap:11px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:12px;padding:9px 13px}
+  .glist .gav{width:30px;height:30px;border-radius:50%;object-fit:cover;flex:none;
+    background:var(--panel);display:grid;place-items:center;color:var(--gold);
+    font-weight:700;font-size:.8rem}
+  .glist .gwho{flex:1;min-width:0}
+  .glist .gname{font-size:.9rem;font-weight:600}
+  .glist .gscope{font-size:.74rem;color:var(--muted);overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .glist .grm{background:none;border:none;color:var(--rose);cursor:pointer;
+    font:600 .74rem var(--mono);text-transform:uppercase;letter-spacing:.04em}
+</style>

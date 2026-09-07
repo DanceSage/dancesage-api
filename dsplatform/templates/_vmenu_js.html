@@ -1,0 +1,129 @@
+<script>
+// ── one menu per video: visibility, sharing, deletion ──────────────────────
+// Shared by the profile and the video page. A page that wants to draw its own
+// lists on top sets window.renderLedger(grants) / window.renderGroups(groups).
+const LABEL = { public: 'Public', granted: 'Shared', private: 'Private' };
+
+document.querySelectorAll('.vmenu').forEach(menu => {
+  const id     = menu.dataset.video;
+  const btn    = menu.querySelector('.vbtn');
+  const panel  = menu.querySelector('.vpanel');
+  const shareBox = menu.querySelector('.sharebox');
+  const input  = menu.querySelector('.sharebox input');
+  const msg    = menu.querySelector('.share-msg');
+  const who    = menu.querySelector('.share-who');
+
+  const close = () => { panel.classList.remove('open'); shareBox.classList.remove('open'); };
+
+  btn.onclick = e => {
+    e.stopPropagation();
+    const wasOpen = panel.classList.contains('open');
+    document.querySelectorAll('.vpanel.open').forEach(p => {
+      p.classList.remove('open');
+      p.querySelector('.sharebox').classList.remove('open');
+    });
+    if (!wasOpen) panel.classList.add('open');
+  };
+  panel.onclick = e => e.stopPropagation();
+  document.addEventListener('click', close);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+
+  // visibility
+  panel.querySelectorAll('.vopt').forEach(opt => {
+    opt.onclick = async () => {
+      const want = opt.dataset.set;
+      const r = await fetch(`/v1/videos/${id}/visibility`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visibility: want })
+      });
+      if (!r.ok) return;
+      btn.className = 'vbtn state-' + want;
+      menu.querySelector('.vlabel').textContent = LABEL[want];
+      close();
+    };
+  });
+
+  // sharing — reveals its own row rather than opening another screen
+  menu.querySelector('.vshare').onclick = () => {
+    shareBox.classList.toggle('open');
+    if (shareBox.classList.contains('open')) { refresh(); input.focus(); }
+  };
+  async function refresh() {
+    const r = await fetch('/v1/grants');
+    if (!r.ok) return;
+    const { grants } = await r.json();
+    who.innerHTML = '';
+    grants.filter(g => String(g.video_id) === id).forEach(g => {
+      const li = document.createElement('li');
+      li.innerHTML = `@${g.handle}<button title="Remove">&times;</button>`;
+      li.querySelector('button').onclick = async () => {
+        await fetch(`/v1/grants/${g.id}`, { method: 'DELETE' });
+        refresh();
+      };
+      who.appendChild(li);
+    });
+  }
+  async function add() {
+    msg.textContent = '';
+    const h = input.value.trim().replace(/^@/, '');
+    if (!h) return;
+    const r = await fetch('/v1/grants', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle: h, video_id: Number(id) })
+    });
+    if (r.ok) {
+      input.value = '';
+      // sharing a clip marks it Shared; keep the button honest
+      btn.className = 'vbtn state-granted';
+      menu.querySelector('.vlabel').textContent = LABEL.granted;
+      refresh(); loadGrants();
+    } else msg.textContent = (await r.json()).detail || 'Could not add them.';
+  }
+  menu.querySelector('.share-go').onclick = add;
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+
+  // a group, when you have any: one click, one grant per member
+  const groupRow = menu.querySelector('.share-group');
+  const pick = menu.querySelector('.share-pick');
+  function offerGroups() {
+    pick.innerHTML = GROUPS.map(g => `<option value="${g.id}">${g.name} (${g.members.length})</option>`).join('');
+    groupRow.hidden = GROUPS.length === 0;
+  }
+  groupOffers.push(offerGroups);
+  menu.querySelector('.share-go-group').onclick = async () => {
+    msg.textContent = '';
+    const r = await fetch('/v1/grants', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ group_id: Number(pick.value), video_id: Number(id) })
+    });
+    if (r.ok) {
+      btn.className = 'vbtn state-granted';
+      menu.querySelector('.vlabel').textContent = LABEL.granted;
+      refresh(); loadGrants();
+    } else msg.textContent = (await r.json()).detail || 'Could not share with that group.';
+  };
+
+  // deletion
+  menu.querySelector('.vdel').onclick = async () => {
+    if (!confirm(`Delete \u201c${menu.dataset.title}\u201d?\n\n`
+      + `The video and its skeleton are removed from Dance Sage. `
+      + `Anything saved on your phone is not affected. This cannot be undone.`)) return;
+    const r = await fetch(`/v1/videos/${id}`, { method: 'DELETE' });
+    if (r.ok) { menu.closest('.card').remove(); loadGrants(); }
+    else alert('Could not delete that one.');
+  };
+});
+
+// ── groups ─────────────────────────────────────────────────────────────────
+let GROUPS = [];
+const groupOffers = [];
+const grouplist = document.getElementById('grouplist');
+async function loadGroups() {
+  const r = await fetch('/v1/groups');
+  if (!r.ok) return;
+  GROUPS = (await r.json()).groups;
+  groupOffers.forEach(f => f());
+  if (window.renderGroups) window.renderGroups(GROUPS);
+}
+loadGroups();
+</script>

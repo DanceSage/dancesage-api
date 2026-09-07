@@ -1,0 +1,31 @@
+      {# One control per video: visibility, who has it, sharing, deletion.
+         The same on the profile and on the video's own page. #}
+      <div class="vmenu" data-video="{{ v.id }}" data-title="{{ v.title }}">
+        <ul class="share-who share-who-card" title="Who can see this one"></ul>
+        <button class="vbtn state-{{ v.visibility }}">
+          <span class="dot"></span><span class="vlabel">{{
+            {'public':'Public','granted':'Shared','private':'Private'}[v.visibility]
+          }}</span><span class="caret">&#9662;</span>
+        </button>
+        <div class="vpanel">
+          <button class="vopt" data-set="public"><span class="dot pub"></span>Public</button>
+          <button class="vopt" data-set="granted"><span class="dot shr"></span>Shared</button>
+          <button class="vopt" data-set="private"><span class="dot prv"></span>Private</button>
+          <div class="vsep"></div>
+          <button class="vshare">Share this one&hellip;</button>
+          <button class="vdel">Delete</button>
+          <div class="sharebox">
+            <div class="share-row">
+              <span class="at">@</span><input placeholder="their handle"
+                autocapitalize="none" autocorrect="off">
+              <button class="share-go">Add</button>
+            </div>
+            <div class="share-row share-group" hidden>
+              <select class="share-pick"></select>
+              <button class="share-go share-go-group">Share</button>
+            </div>
+            <div class="share-msg"></div>
+            <ul class="share-who"></ul>
+          </div>
+        </div>
+      </div>

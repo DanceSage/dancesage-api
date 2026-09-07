@@ -10,7 +10,8 @@
     <div class="stats">
       <div><b>{{ videos|length }}</b><span>total</span></div>
       <div><b>{{ videos|selectattr('visibility','equalto','public')|list|length }}</b><span>public</span></div>
-      <div><b>{{ videos|rejectattr('visibility','equalto','public')|list|length }}</b><span>private</span></div>
+      <div><b>{{ videos|selectattr('visibility','equalto','private')|list|length }}</b><span>private</span></div>
+      <div><b>{{ videos|selectattr('visibility','equalto','granted')|list|length }}</b><span>shared</span></div>
     </div>
     <div>
       <a class="chip" href="/@{{ u.handle }}">View public page</a>
@@ -49,97 +50,13 @@ shows only what is marked public.</p>
       <div class="s">{{ v.seconds }}s{% if v.has_video %} &middot; video{% endif %}</div>
       {# One control, like the phone has: five buttons per card was five
          decisions competing for the same glance. #}
-      <div class="vmenu" data-video="{{ v.id }}" data-title="{{ v.title }}">
-        <button class="vbtn state-{{ v.visibility }}">
-          <span class="dot"></span><span class="vlabel">{{
-            {'public':'Public','granted':'Shared','private':'Private'}[v.visibility]
-          }}</span><span class="caret">&#9662;</span>
-        </button>
-        <div class="vpanel">
-          <button class="vopt" data-set="public"><span class="dot pub"></span>Public</button>
-          <button class="vopt" data-set="granted"><span class="dot shr"></span>Shared</button>
-          <button class="vopt" data-set="private"><span class="dot prv"></span>Private</button>
-          <div class="vsep"></div>
-          <button class="vshare">Share this one&hellip;</button>
-          <button class="vdel">Delete</button>
-          <div class="sharebox">
-            <div class="share-row">
-              <span class="at">@</span><input placeholder="their handle"
-                autocapitalize="none" autocorrect="off">
-              <button class="share-go">Add</button>
-            </div>
-            <div class="share-row share-group" hidden>
-              <select class="share-pick"></select>
-              <button class="share-go share-go-group">Share</button>
-            </div>
-            <div class="share-msg"></div>
-            <ul class="share-who"></ul>
-          </div>
-        </div>
-      </div>
+      {% include '_vmenu.html' %}
     </div>
   </div>
   {% endfor %}
 </div>
 {% if not videos %}<p class="sub">Nothing yet. Record something in the app.</p>{% endif %}
-<style>
-  /* The card clips its contents so the skeleton corners stay rounded — which
-     also clipped the dropdown out of existence. The canvas rounds itself
-     instead, and a card with an open menu rises above its neighbours. */
-  .card{overflow:visible}
-  .card canvas{border-radius:13px 13px 0 0}
-  .card:has(.vpanel.open){position:relative;z-index:50}
-  .vmenu{position:relative;margin-top:10px}
-  .vbtn{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);
-    border:1px solid var(--line);color:var(--text);border-radius:999px;
-    padding:5px 11px;font:600 .78rem var(--font-body);cursor:pointer}
-  .vbtn:hover{border-color:rgba(245,208,111,.45)}
-  .vbtn .caret{color:var(--faint);font-size:.7rem}
-  .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
-  .state-public .dot,.dot.pub{background:#3ad6b0}
-  .state-granted .dot,.dot.shr{background:var(--gold)}
-  .state-private .dot,.dot.prv{background:var(--faint)}
-  .vpanel{position:absolute;left:0;top:calc(100% + 7px);min-width:190px;z-index:40;
-    background:#14181b;border:1px solid rgba(255,255,255,.14);border-radius:12px;
-    padding:6px;display:none;box-shadow:0 16px 40px rgba(0,0,0,.55)}
-  .vpanel.open{display:block}
-  .vpanel button{display:flex;align-items:center;gap:8px;width:100%;background:none;
-    border:none;color:var(--text);text-align:left;padding:8px 10px;border-radius:8px;
-    font:500 .85rem var(--font-body);cursor:pointer}
-  .vpanel button:hover{background:rgba(255,255,255,.07)}
-  .vpanel .vdel{color:var(--rose)}
-  .vsep{height:1px;background:rgba(255,255,255,.10);margin:5px 2px}
-  .sharebox{display:none;padding:6px 4px 2px;border-top:1px solid rgba(255,255,255,.10);
-    margin-top:5px}
-  .sharebox.open{display:block}
-  .share-row{display:flex;gap:5px;align-items:center}
-  .share-row .at{color:var(--faint);font-size:.85rem}
-  .share-row input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);
-    color:var(--text);padding:6px 9px;border-radius:7px;font-size:.8rem}
-  .share-go{background:var(--gold)!important;color:#241a06!important;
-    font:600 .72rem var(--font-body)!important;padding:6px 11px!important;
-    border-radius:7px!important;width:auto!important;flex:none}
-  .share-msg{font-size:.72rem;color:var(--rose);min-height:1em;margin-top:5px}
-  .share-who{list-style:none;margin:6px 0 2px;padding:0;display:flex;flex-wrap:wrap;gap:5px}
-  .share-who li{display:flex;align-items:center;gap:5px;background:var(--panel2);
-    border:1px solid var(--line);border-radius:999px;padding:3px 5px 3px 9px;font-size:.72rem}
-  .share-who li button{width:auto;padding:0 3px;color:var(--rose);font-size:.85rem}
-  .share-box{border:1px solid var(--line);background:var(--panel);border-radius:16px;
-    padding:20px 22px;margin:0 0 30px}
-  .share-box h2{font-size:1.05rem;margin:0 0 6px}
-  .glist{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px;max-width:420px}
-  .glist li{display:flex;align-items:center;gap:11px;background:var(--panel2);
-    border:1px solid var(--line);border-radius:12px;padding:9px 13px}
-  .glist .gav{width:30px;height:30px;border-radius:50%;object-fit:cover;flex:none;
-    background:var(--panel);display:grid;place-items:center;color:var(--gold);
-    font-weight:700;font-size:.8rem}
-  .glist .gwho{flex:1;min-width:0}
-  .glist .gname{font-size:.9rem;font-weight:600}
-  .glist .gscope{font-size:.74rem;color:var(--muted);overflow:hidden;
-    text-overflow:ellipsis;white-space:nowrap}
-  .glist .grm{background:none;border:none;color:var(--rose);cursor:pointer;
-    font:600 .74rem var(--mono);text-transform:uppercase;letter-spacing:.04em}
-</style>
+{% include '_vmenu_css.html' %}
 {% if offers %}
 <div class="share-box" style="margin-top:34px;margin-bottom:14px">
   <h2>Offers</h2>
@@ -178,137 +95,19 @@ shows only what is marked public.</p>
 </div>
 {% endif %}
 {% endblock %}
-{% block js %}<script>
+{% block js %}{% include '_vmenu_js.html' %}
+<script>
 document.querySelectorAll('canvas[data-pose]').forEach(c=>{ new Skeleton(c,{yaw:0.3,still:true}).load(c.dataset.pose); });
 
-// ── one menu per video: visibility, sharing, deletion ──────────────────────
-const LABEL = { public: 'Public', granted: 'Shared', private: 'Private' };
-
-document.querySelectorAll('.vmenu').forEach(menu => {
-  const id     = menu.dataset.video;
-  const btn    = menu.querySelector('.vbtn');
-  const panel  = menu.querySelector('.vpanel');
-  const shareBox = menu.querySelector('.sharebox');
-  const input  = menu.querySelector('.sharebox input');
-  const msg    = menu.querySelector('.share-msg');
-  const who    = menu.querySelector('.share-who');
-
-  const close = () => { panel.classList.remove('open'); shareBox.classList.remove('open'); };
-
-  btn.onclick = e => {
-    e.stopPropagation();
-    const wasOpen = panel.classList.contains('open');
-    document.querySelectorAll('.vpanel.open').forEach(p => {
-      p.classList.remove('open');
-      p.querySelector('.sharebox').classList.remove('open');
-    });
-    if (!wasOpen) panel.classList.add('open');
-  };
-  panel.onclick = e => e.stopPropagation();
-  document.addEventListener('click', close);
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
-
-  // visibility
-  panel.querySelectorAll('.vopt').forEach(opt => {
-    opt.onclick = async () => {
-      const want = opt.dataset.set;
-      const r = await fetch(`/v1/videos/${id}/visibility`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ visibility: want })
-      });
-      if (!r.ok) return;
-      btn.className = 'vbtn state-' + want;
-      menu.querySelector('.vlabel').textContent = LABEL[want];
-      close();
-    };
-  });
-
-  // sharing — reveals its own row rather than opening another screen
-  menu.querySelector('.vshare').onclick = () => {
-    shareBox.classList.toggle('open');
-    if (shareBox.classList.contains('open')) { refresh(); input.focus(); }
-  };
-  async function refresh() {
-    const r = await fetch('/v1/grants');
-    if (!r.ok) return;
-    const { grants } = await r.json();
-    who.innerHTML = '';
-    grants.filter(g => String(g.video_id) === id).forEach(g => {
-      const li = document.createElement('li');
-      li.innerHTML = `@${g.handle}<button title="Remove">&times;</button>`;
-      li.querySelector('button').onclick = async () => {
-        await fetch(`/v1/grants/${g.id}`, { method: 'DELETE' });
-        refresh();
-      };
-      who.appendChild(li);
-    });
-  }
-  async function add() {
-    msg.textContent = '';
-    const h = input.value.trim().replace(/^@/, '');
-    if (!h) return;
-    const r = await fetch('/v1/grants', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ handle: h, video_id: Number(id) })
-    });
-    if (r.ok) {
-      input.value = '';
-      // sharing a clip marks it Shared; keep the button honest
-      btn.className = 'vbtn state-granted';
-      menu.querySelector('.vlabel').textContent = LABEL.granted;
-      refresh(); loadGrants();
-    } else msg.textContent = (await r.json()).detail || 'Could not add them.';
-  }
-  menu.querySelector('.share-go').onclick = add;
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
-
-  // a group, when you have any: one click, one grant per member
-  const groupRow = menu.querySelector('.share-group');
-  const pick = menu.querySelector('.share-pick');
-  function offerGroups() {
-    pick.innerHTML = GROUPS.map(g => `<option value="${g.id}">${g.name} (${g.members.length})</option>`).join('');
-    groupRow.hidden = GROUPS.length === 0;
-  }
-  groupOffers.push(offerGroups);
-  menu.querySelector('.share-go-group').onclick = async () => {
-    msg.textContent = '';
-    const r = await fetch('/v1/grants', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ group_id: Number(pick.value), video_id: Number(id) })
-    });
-    if (r.ok) {
-      btn.className = 'vbtn state-granted';
-      menu.querySelector('.vlabel').textContent = LABEL.granted;
-      refresh(); loadGrants();
-    } else msg.textContent = (await r.json()).detail || 'Could not share with that group.';
-  };
-
-  // deletion
-  menu.querySelector('.vdel').onclick = async () => {
-    if (!confirm(`Delete \u201c${menu.dataset.title}\u201d?\n\n`
-      + `The video and its skeleton are removed from Dance Sage. `
-      + `Anything saved on your phone is not affected. This cannot be undone.`)) return;
-    const r = await fetch(`/v1/videos/${id}`, { method: 'DELETE' });
-    if (r.ok) { menu.closest('.card').remove(); loadGrants(); }
-    else alert('Could not delete that one.');
-  };
-});
-
-// ── groups ─────────────────────────────────────────────────────────────────
-let GROUPS = [];
-const groupOffers = [];
+// ── the groups box ─────────────────────────────────────────────────────────
 const grouplist = document.getElementById('grouplist');
-async function loadGroups() {
-  const r = await fetch('/v1/groups');
-  if (!r.ok) return;
-  GROUPS = (await r.json()).groups;
-  groupOffers.forEach(f => f());
+window.renderGroups = groups => {
   grouplist.innerHTML = '';
-  if (!GROUPS.length) {
+  if (!groups.length) {
     grouplist.innerHTML = '<li style="color:var(--muted);font-size:.85rem">No groups yet</li>';
     return;
   }
-  for (const g of GROUPS) {
+  for (const g of groups) {
     const li = document.createElement('li');
     li.innerHTML = `<span class="gwho"><span class="gname">${g.name}</span>
       <div class="gscope">${g.members.length ? g.members.map(m => '@' + m.handle).join(', ') : 'nobody yet'}</div></span>
@@ -331,7 +130,7 @@ async function loadGroups() {
     };
     grouplist.appendChild(li);
   }
-}
+};
 document.getElementById('gcreate').onclick = async () => {
   const msg = document.getElementById('gmsg'); msg.textContent = '';
   const name = document.getElementById('gname').value.trim();
@@ -368,10 +167,7 @@ document.querySelectorAll('.card[data-grant] .decline').forEach(b => {
 
 // ── the ledger of who has what ─────────────────────────────────────────────
 const glist = document.getElementById('glist');
-async function loadGrants() {
-  const r = await fetch('/v1/grants');
-  if (!r.ok) return;
-  const { grants } = await r.json();
+window.renderLedger = grants => {
   glist.innerHTML = '';
   if (!grants.length) {
     glist.innerHTML = '<li style="color:var(--muted);font-size:.85rem">Nobody yet</li>';
@@ -391,6 +187,6 @@ async function loadGrants() {
     };
     glist.appendChild(li);
   }
-}
+};
 loadGrants();
 </script>{% endblock %}
