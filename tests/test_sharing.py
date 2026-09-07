@@ -455,3 +455,37 @@ def test_an_attempt_goes_back_to_its_teacher_and_nowhere_else():
     own = _post(maya, "My own sombrero", "private")
     assert client.post(f"/v1/series/{sid}/videos", json={"video_id": own}, headers=hdr(maya)).status_code == 200
     assert client.post("/v1/grants", json={"handle": "frienda", "video_id": own}, headers=hdr(maya)).status_code == 200
+
+
+def test_attempts_live_under_my_lessons_not_on_the_profile():
+    teacher, maya = _user("lteach"), _user("lmaya")
+    hdr = lambda t: {"Authorization": f"Bearer {t}"}
+    lesson = _post(teacher, "Basic", "private")
+    client.post("/v1/grants", json={"handle": "lmaya", "video_id": lesson}, headers=hdr(teacher))
+    _accept_all(maya)
+    pose = json.dumps({"j": [[[[0.1 * j, 0.2 * j, 0.0] for j in range(33)] for _ in range(4)]]})
+    r = client.post("/v1/videos", data={"title": "Basic — try 1", "pose3d": pose, "pose2d": pose,
+                                        "reply_to": lesson, "visibility": "public"}, headers=hdr(maya))
+    attempt = r.json()["id"]
+    # Private no matter what was asked; not a post; not on the public page.
+    assert r.json()["visibility"] == "private"
+    assert client.get("/v1/me", headers=hdr(maya)).json()["videos"] == []
+    assert "Basic — try 1" not in client.get("/@lmaya").text
+    assert "Basic — try 1" not in client.get("/me", cookies={"ds_session": maya}).text.split("<body", 1)[1].split("Shared with you")[0]
+    assert client.post(f"/v1/videos/{attempt}/visibility", json={"visibility": "public"}, headers=hdr(maya)).status_code == 400
+
+    # It is under My lessons, unsent; the teacher has nothing yet.
+    mine = client.get("/v1/lessons", headers=hdr(maya)).json()["lessons"]
+    assert [l["lesson"]["title"] for l in mine] == ["Basic"]
+    assert [(a["title"], a["sent"]) for a in mine[0]["attempts"]] == [("Basic — try 1", False)]
+    assert _inbox_titles(teacher) == []
+    page = client.get("/lessons", cookies={"ds_session": maya}).text
+    assert "Basic — try 1" in page and "Send to Lteach" in page
+
+    # Sent: the teacher has it at once, no offer; the page says so.
+    assert client.post(f"/v1/lessons/{attempt}/send", headers=hdr(maya)).status_code == 200
+    assert _inbox_titles(teacher) == ["Basic — try 1"] and _offer_titles(teacher) == []
+    assert client.get("/v1/lessons", headers=hdr(maya)).json()["lessons"][0]["attempts"][0]["sent"] is True
+    assert "sent to Lteach" in client.get("/lessons", cookies={"ds_session": maya}).text
+    # Nobody else's attempt can be sent by her.
+    assert client.post(f"/v1/lessons/{lesson}/send", headers=hdr(maya)).status_code == 404

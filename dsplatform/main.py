@@ -195,7 +195,7 @@ def profile(handle: str, request: Request, me: User | None = Depends(optional_us
     u = db.execute(select(User).where(User.handle == handle)).scalar_one_or_none()
     if not u:
         raise HTTPException(404, "No such profile")
-    vids = sorted([v for v in u.videos if _may_view(v, me, db)],
+    vids = sorted([v for v in u.videos if v.reply_to is None and _may_view(v, me, db)],
                   key=lambda v: v.created_at, reverse=True)
     shared = bool(me) and me.id != u.id and _has_grant(db, u.id, me.id)
     # Public videos other dancers shared with this person appear here too —
@@ -414,6 +414,10 @@ async def upload(
     # Only a video the poster can see may be answered; otherwise the id is noise.
     if reply_to is not None and not _may_view(db.get(Video, reply_to), u, db):
         reply_to = None
+    # An attempt lives under its lesson, for the student and the teacher; it is
+    # never a post on a profile and never public.
+    if reply_to is not None:
+        visibility = "private"
     v = Video(user_id=u.id, title=title, note=note, style=style, level=level,
               pose_key=f"{stem}-3d", pose2d_key=pose2d_key, video_key=video_key,
               dancers=len(p3["j"]), frames=frames, fps=int(fps),
@@ -474,8 +478,10 @@ def me(u: User = Depends(current_user)):
                         "pose_key": v.pose_key, "pose2d_key": v.pose2d_key,
                         "video_key": v.video_key, "fps": int(v.fps or 30),
                         "created_at": v.created_at.isoformat()}
-                       # Newest first — the same order the web page shows.
-                       for v in sorted(u.videos, key=lambda v: v.created_at, reverse=True)]}
+                       # Newest first — the same order the web page shows. Attempts
+                       # are not posts: they live under My lessons.
+                       for v in sorted(u.videos, key=lambda v: v.created_at, reverse=True)
+                       if v.reply_to is None]}
 
 
 @app.patch("/v1/me")
@@ -534,7 +540,7 @@ def my_page(request: Request, u: User | None = Depends(optional_user),
         return RedirectResponse("/signin", status_code=303)
     if not u.handle:
         return templates.TemplateResponse(request, "handle.html", {"u": u})
-    vids = sorted(u.videos, key=lambda v: v.created_at, reverse=True)
+    vids = sorted([v for v in u.videos if v.reply_to is None], key=lambda v: v.created_at, reverse=True)
     shared_ids = {g.video_id for g in db.execute(select(Grant).where(
         Grant.owner_id == u.id, Grant.revoked_at.is_(None))).scalars().all()}
     groups = list_groups(u, db)
@@ -907,6 +913,67 @@ def decline_share(grant_id: int, u: User = Depends(current_user),
     return {"ok": True, "declined": grant_id}
 
 
+# ── my lessons online: attempts under the videos they answer ───────────────
+
+def _my_lessons(u: User, db: Session) -> list[dict]:
+    """Every video this person has attempted, with their attempts under it,
+    and whether each attempt has been sent to the video's owner."""
+    attempts = db.execute(select(Video).where(Video.user_id == u.id, Video.reply_to.is_not(None))
+                          .order_by(Video.created_at.desc())).scalars().all()
+    lessons: dict[int, dict] = {}
+    for a in attempts:
+        src = db.get(Video, a.reply_to)
+        if src is None:
+            continue
+        entry = lessons.get(src.id)
+        if entry is None:
+            # The share that brought the lesson: says which group it came through.
+            via = db.execute(select(Grant).where(Grant.viewer_id == u.id, Grant.video_id == src.id,
+                                                 Grant.revoked_at.is_(None))).scalars().first()
+            entry = lessons[src.id] = {"lesson": _card(src),
+                                       "teacher": {"handle": src.user.handle, "display_name": src.user.display_name},
+                                       "group": ({"id": via.group_id, "name": via.group.name}
+                                                 if via and via.group_id and via.group else None),
+                                       "attempts": []}
+        sent = db.execute(select(Grant).where(Grant.owner_id == u.id, Grant.viewer_id == src.user_id,
+                                              Grant.video_id == a.id, Grant.revoked_at.is_(None))).scalars().first()
+        entry["attempts"].append(dict(_card(a), sent=sent is not None,
+                                      sent_at=sent.created_at.isoformat() if sent else ""))
+    return list(lessons.values())
+
+
+@app.get("/v1/lessons")
+def my_lessons(u: User = Depends(current_user), db: Session = Depends(get_db)):
+    return {"lessons": _my_lessons(u, db)}
+
+
+@app.post("/v1/lessons/{attempt_id}/send")
+def send_attempt(attempt_id: int, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Send a saved attempt to the teacher — the owner of the video it answers,
+    through the group the lesson came by, when it did. No offer: a reply is
+    an answer. Sending again is harmless."""
+    a = db.get(Video, attempt_id)
+    if not a or a.user_id != u.id or a.reply_to is None:
+        raise HTTPException(404, "No such attempt")
+    src = db.get(Video, a.reply_to)
+    if src is None:
+        raise HTTPException(404, "The video this answered is gone")
+    via = db.execute(select(Grant).where(Grant.viewer_id == u.id, Grant.video_id == src.id,
+                                         Grant.revoked_at.is_(None))).scalars().first()
+    group = via.group if via and via.group_id else None
+    g = _grant(db, u, src.user, a, group, accepted=True)
+    db.commit(); db.refresh(g)
+    return {"id": g.id, "to": src.user.handle, "group": group.name if group else None}
+
+
+@app.get("/lessons", response_class=HTMLResponse)
+def lessons_page(request: Request, me: User | None = Depends(optional_user),
+                 db: Session = Depends(get_db)):
+    if not me:
+        return RedirectResponse("/signin", status_code=303)
+    return templates.TemplateResponse(request, "lessons.html", {"lessons": _my_lessons(me, db)})
+
+
 # ── series: folders in My videos, shared as a standing offer ───────────────
 
 def _own_series(db: Session, series_id: int, u: User) -> Series:
@@ -1210,6 +1277,8 @@ def set_visibility(video_id: int, payload: dict,
     want = payload.get("visibility")
     if want not in ("private", "granted", "public"):
         raise HTTPException(400, "visibility must be private or public")
+    if v.reply_to is not None and want == "public":
+        raise HTTPException(400, "An attempt stays private; it lives under your lessons")
     v.visibility = "public" if want == "public" else "private"
     db.commit()
     return {"ok": True, "visibility": v.visibility}
