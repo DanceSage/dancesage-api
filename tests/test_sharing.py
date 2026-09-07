@@ -346,3 +346,76 @@ def test_public_videos_shared_with_you_show_on_your_public_page_with_the_sharer(
     # The owner turning it private takes it off Andy's page.
     client.post(f"/v1/videos/{public}/visibility", json={"visibility": "private"}, headers=hdr(owner))
     assert "Open combo" not in client.get("/@andy2").text
+
+
+def test_a_series_is_a_standing_offer_that_stays_live():
+    teacher, maya, leo = _user("srsteach"), _user("srsmaya"), _user("srsleo")
+    hdr = lambda t: {"Authorization": f"Bearer {t}"}
+    basic = _post(teacher, "Salsa basic", "private")
+    cbl = _post(teacher, "Cross body lead", "private")
+
+    # A series with two videos; a group with two students.
+    r = client.post("/v1/series", json={"name": "Salsa Friday class", "video_ids": [basic, cbl]}, headers=hdr(teacher))
+    assert r.status_code == 200, r.text
+    sid = r.json()["id"]
+    assert r.json()["video_count"] == 2
+    gid = client.post("/v1/groups", json={"name": "salsa_friday_class", "handles": ["srsmaya", "srsleo"]},
+                      headers=hdr(teacher)).json()["id"]
+
+    # Share the series with the group: one offer per student, nothing viewable yet.
+    r = client.post("/v1/grants", json={"series_id": sid, "group_id": gid}, headers=hdr(teacher))
+    assert r.status_code == 200, r.text
+    assert sorted(g["handle"] for g in r.json()["granted"]) == ["srsleo", "srsmaya"]
+    inbox = _inbox(maya)
+    assert [s["name"] for s in inbox["series_offers"]] == ["Salsa Friday class"]
+    assert inbox["offers"] == [] and inbox["from"] == []
+    assert client.get(f"/v/{basic}", cookies={"ds_session": maya}).status_code == 404
+
+    # Maya accepts once; both videos arrive, filed under the series.
+    sgid = inbox["series_offers"][0]["series_grant_id"]
+    assert client.post(f"/v1/shared/series/{sgid}/accept", headers=hdr(maya)).status_code == 200
+    inbox = _inbox(maya)
+    assert [s["name"] for s in inbox["series"]] == ["Salsa Friday class"]
+    assert sorted(v["title"] for v in inbox["from"][0]["videos"]) == ["Cross body lead", "Salsa basic"]
+    assert all(v["series"]["name"] == "Salsa Friday class" for v in inbox["from"][0]["videos"])
+    assert client.get(f"/v/{basic}", cookies={"ds_session": maya}).status_code == 200
+    # Leo hasn't answered: still nothing for him.
+    assert _inbox_titles(leo) == []
+
+    # Live: a video added next week reaches Maya without asking, not Leo.
+    enchufla = _post(teacher, "Enchufla", "private")
+    client.post(f"/v1/series/{sid}/videos", json={"video_id": enchufla}, headers=hdr(teacher))
+    assert "Enchufla" in _inbox_titles(maya)
+    assert client.get(f"/v/{enchufla}", cookies={"ds_session": maya}).status_code == 200
+    assert _inbox_titles(leo) == []
+
+    # The wall groups series → video → attempts.
+    pose = json.dumps({"j": [[[[0.1 * j, 0.2 * j, 0.0] for j in range(33)] for _ in range(4)]]})
+    attempt = client.post("/v1/videos", data={"title": "CBL — my attempt", "pose3d": pose, "pose2d": pose,
+                                              "reply_to": cbl}, headers=hdr(maya)).json()["id"]
+    client.post(f"/v1/groups/{gid}/share", json={"video_id": attempt}, headers=hdr(maya))
+    wall = client.get(f"/v1/groups/{gid}/wall", headers=hdr(teacher)).json()
+    assert [s["name"] for s in wall["series"]] == ["Salsa Friday class"]
+    titles = {v["title"]: v for v in wall["series"][0]["videos"]}
+    assert set(titles) == {"Salsa basic", "Cross body lead", "Enchufla"}
+    assert [r["title"] for r in titles["Cross body lead"]["replies"]] == ["CBL — my attempt"]
+    assert wall["lessons"] == [] and wall["replies"] == []
+
+    # The owner's ledger shows the series share; revoking it takes every video back.
+    ledger = client.get("/v1/grants", headers=hdr(teacher)).json()
+    assert [(s["handle"], s["accepted"]) for s in sorted(ledger["series_grants"], key=lambda s: s["handle"])] == [("srsleo", False), ("srsmaya", True)]
+    assert all(g["series"] for g in ledger["grants"] if g["handle"] == "srsmaya")
+    maya_sg = next(s["id"] for s in ledger["series_grants"] if s["handle"] == "srsmaya")
+    assert client.delete(f"/v1/series/grants/{maya_sg}", headers=hdr(teacher)).status_code == 200
+    assert _inbox_titles(maya) == [] and _inbox(maya)["series"] == []
+    assert client.get(f"/v/{basic}", cookies={"ds_session": maya}).status_code == 404
+
+    # Leo declines; a stranger can't touch any of it; deleting the series ends the rest.
+    leo_sg = _inbox(leo)["series_offers"][0]["series_grant_id"]
+    assert client.delete(f"/v1/shared/series/{leo_sg}", headers=hdr(maya)).status_code == 404
+    assert client.delete(f"/v1/shared/series/{leo_sg}", headers=hdr(leo)).status_code == 200
+    assert _inbox(leo)["series_offers"] == []
+    assert client.delete(f"/v1/series/{sid}", headers=hdr(teacher)).status_code == 200
+    assert client.get("/v1/series", headers=hdr(teacher)).json()["series"] == []
+    # …and the videos themselves are untouched.
+    assert len(client.get("/v1/me", headers=hdr(teacher)).json()["videos"]) == 3

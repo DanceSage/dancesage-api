@@ -15,7 +15,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 
 from .db import get_db, Base, engine, SessionLocal
-from .models import User, Video, Grant, Group, GroupMember
+from .models import User, Video, Grant, Group, GroupMember, Series, SeriesVideo, SeriesGrant
 from .storage import get_storage, LocalStorage
 from .auth import (verify_provider_token, issue_session, current_user,
                     optional_user, COOKIE, SECRET)
@@ -59,6 +59,9 @@ def _migrate_grant_offers():
             if cols and "group_id" not in cols:
                 conn.execute(text("ALTER TABLE grants ADD COLUMN group_id INTEGER"))
                 print("grants: added group_id", flush=True)
+            if cols and "series_grant_id" not in cols:
+                conn.execute(text("ALTER TABLE grants ADD COLUMN series_grant_id INTEGER"))
+                print("grants: added series_grant_id", flush=True)
             vcols = [row[1] for row in conn.execute(text("PRAGMA table_info(videos)"))]
             if vcols and "reply_to" not in vcols:
                 conn.execute(text("ALTER TABLE videos ADD COLUMN reply_to INTEGER"))
@@ -586,19 +589,89 @@ def _shared_with(me: User, db: Session, *, pending: bool = False) -> list[dict]:
             "videos": []})
         # The grant id rides with the card: accepting, declining and stopping
         # all name it.
+        sg = db.get(SeriesGrant, g.series_grant_id) if g.series_grant_id else None
         entry["videos"].append(dict(_card(v), grant_id=g.id,
                                     group=({"id": g.group_id, "name": g.group.name}
-                                           if g.group_id and g.group else None)))
+                                           if g.group_id and g.group else None),
+                                    series=({"id": sg.series_id, "name": sg.series.name}
+                                            if sg else None)))
     out = list(by_owner.values())
     for entry in out:
         entry["videos"].sort(key=lambda c: c["id"], reverse=True)
     return out
 
 
+def _series_card(s: Series, *, for_owner: bool = False) -> dict:
+    card = {"id": s.id, "name": s.name, "video_count": len(s.items),
+            "videos": [_card(i.video) for i in s.items],
+            "owner": {"handle": s.owner.handle, "display_name": s.owner.display_name}}
+    if for_owner:
+        card["shared_with"] = [{"grant_id": g.id, "handle": g.viewer.handle,
+                                "display_name": g.viewer.display_name,
+                                "accepted": g.accepted_at is not None,
+                                "group": g.group.name if g.group else None}
+                               for g in s.grants if g.revoked_at is None]
+    return card
+
+
+def _series_offers(me: User, db: Session, *, pending: bool) -> list[dict]:
+    rows = db.execute(select(SeriesGrant).where(SeriesGrant.viewer_id == me.id,
+                                                SeriesGrant.revoked_at.is_(None))).scalars().all()
+    return [dict(_series_card(g.series), series_grant_id=g.id,
+                 group=({"id": g.group_id, "name": g.group.name} if g.group else None))
+            for g in rows if g.pending == pending]
+
+
 @app.get("/v1/shared")
 def shared_with_me(me: User = Depends(current_user), db: Session = Depends(get_db)):
-    """`from` is what you accepted; `offers` is waiting on you."""
-    return {"from": _shared_with(me, db), "offers": _shared_with(me, db, pending=True)}
+    """`from` is what you accepted; `offers` is waiting on you — and the same
+    two for series, which are accepted once."""
+    return {"from": _shared_with(me, db), "offers": _shared_with(me, db, pending=True),
+            "series": _series_offers(me, db, pending=False),
+            "series_offers": _series_offers(me, db, pending=True)}
+
+
+def _materialise(db: Session, sg: SeriesGrant) -> None:
+    """An accepted series grant becomes one accepted video grant per video in
+    the series — the live part: called again whenever a video is added."""
+    for item in sg.series.items:
+        v = item.video
+        if v.user_id != sg.owner_id:
+            continue
+        g = _grant(db, sg.owner, sg.viewer, v, sg.group, accepted=True)
+        g.series_grant_id = sg.id
+
+
+@app.post("/v1/shared/series/{series_grant_id}/accept")
+def accept_series(series_grant_id: int, u: User = Depends(current_user),
+                  db: Session = Depends(get_db)):
+    sg = db.get(SeriesGrant, series_grant_id)
+    if not sg or sg.viewer_id != u.id or sg.revoked_at is not None:
+        raise HTTPException(404, "No such offer")
+    if sg.accepted_at is None:
+        sg.accepted_at = dt.datetime.utcnow()
+        _materialise(db, sg)
+        db.commit()
+    return {"ok": True, "accepted": series_grant_id}
+
+
+def _end_series_grant(sg: SeriesGrant, db: Session) -> None:
+    sg.revoked_at = dt.datetime.utcnow()
+    for g in db.execute(select(Grant).where(Grant.series_grant_id == sg.id,
+                                            Grant.revoked_at.is_(None))).scalars().all():
+        g.revoked_at = sg.revoked_at
+
+
+@app.delete("/v1/shared/series/{series_grant_id}")
+def decline_series(series_grant_id: int, u: User = Depends(current_user),
+                   db: Session = Depends(get_db)):
+    """Decline the offer, or stop the series — every video it brought goes too."""
+    sg = db.get(SeriesGrant, series_grant_id)
+    if not sg or sg.viewer_id != u.id:
+        raise HTTPException(404, "No such share")
+    _end_series_grant(sg, db)
+    db.commit()
+    return {"ok": True}
 
 
 @app.post("/v1/shared/{grant_id}/accept")
@@ -672,6 +745,10 @@ def delete_account(u: User = Depends(current_user), db: Session = Depends(get_db
             pass
     # Grants both ways: what they gave out, and what was given to them.
     db.execute(delete(Grant).where((Grant.owner_id == u.id) | (Grant.viewer_id == u.id)))
+    # Series they own, and series shared to them.
+    for s in db.execute(select(Series).where(Series.owner_id == u.id)).scalars().all():
+        db.delete(s)
+    db.execute(delete(SeriesGrant).where(SeriesGrant.viewer_id == u.id))
     # Groups they own go; their seat in other people's groups goes too.
     for g in db.execute(select(Group).where(Group.owner_id == u.id)).scalars().all():
         db.delete(g)
@@ -689,14 +766,23 @@ def list_grants(u: User = Depends(current_user), db: Session = Depends(get_db)):
     """Everyone who can see your shared videos."""
     rows = db.execute(select(Grant).where(Grant.owner_id == u.id,
                                           Grant.revoked_at.is_(None))).scalars().all()
+    series_rows = db.execute(select(SeriesGrant).where(SeriesGrant.owner_id == u.id,
+                                                      SeriesGrant.revoked_at.is_(None))).scalars().all()
     return {"grants": [{"id": g.id, "handle": g.viewer.handle,
                         "display_name": g.viewer.display_name,
                         "avatar": f"/avatar/{g.viewer.handle}.jpg" if g.viewer.avatar_key else "",
                         "since": g.created_at.isoformat(),
                         "video_id": g.video_id,
                         "accepted": g.accepted_at is not None,
+                        "series": g.series_grant_id is not None,
                         "scope": g.video.title if g.video else "(video deleted)"}
-                       for g in rows]}
+                       for g in rows],
+            "series_grants": [{"id": sg.id, "handle": sg.viewer.handle,
+                               "display_name": sg.viewer.display_name,
+                               "series_id": sg.series_id, "series": sg.series.name,
+                               "accepted": sg.accepted_at is not None,
+                               "group": sg.group.name if sg.group else None}
+                              for sg in series_rows]}
 
 
 def _grant(db: Session, owner: User, viewer: User, v: Video,
@@ -728,11 +814,19 @@ def add_grant(payload: dict, u: User = Depends(current_user),
     """Let one person — or everyone in one of your groups — see a video.
     Idempotent: granting twice is fine."""
     video_id = payload.get("video_id")
-    if video_id is None:
-        raise HTTPException(400, "video_id required — access is granted per video")
-    v = db.get(Video, int(video_id))
-    if not v or (v.user_id != u.id and v.visibility != "public"):
-        raise HTTPException(404, "No such video")
+    series_id = payload.get("series_id")
+    if video_id is None and series_id is None:
+        raise HTTPException(400, "video_id or series_id required — access is granted per video or per series")
+    v = None
+    series = None
+    if series_id is not None:
+        series = db.get(Series, int(series_id))
+        if not series or series.owner_id != u.id:
+            raise HTTPException(404, "No such series")
+    else:
+        v = db.get(Video, int(video_id))
+        if not v or (v.user_id != u.id and v.visibility != "public"):
+            raise HTTPException(404, "No such video")
 
     viewers: list[User] = []
     group: Group | None = None
@@ -754,6 +848,27 @@ def add_grant(payload: dict, u: User = Depends(current_user),
             raise HTTPException(400, f"“{group.name}” has no members yet")
     else:
         raise HTTPException(400, "handle or group_id required")
+
+    if series is not None:
+        # A standing offer per person. Re-sharing after an end asks again.
+        made = []
+        for viewer in viewers:
+            sg = db.execute(select(SeriesGrant).where(SeriesGrant.series_id == series.id,
+                                                       SeriesGrant.viewer_id == viewer.id)).scalars().first()
+            if sg:
+                if sg.revoked_at is not None:
+                    sg.revoked_at = None
+                    sg.accepted_at = None
+            else:
+                sg = SeriesGrant(series_id=series.id, owner_id=u.id, viewer_id=viewer.id)
+                db.add(sg)
+            if group is not None:
+                sg.group_id = group.id
+            made.append(sg)
+        db.commit()
+        return {"series_id": series.id,
+                "granted": [{"id": sg.id, "handle": sg.viewer.handle,
+                             "display_name": sg.viewer.display_name} for sg in made]}
 
     grants = [_grant(db, u, viewer, v, group) for viewer in viewers]
     db.commit()
@@ -778,6 +893,91 @@ def decline_share(grant_id: int, u: User = Depends(current_user),
     g.revoked_at = dt.datetime.utcnow()
     db.commit()
     return {"ok": True, "declined": grant_id}
+
+
+# ── series: folders in My videos, shared as a standing offer ───────────────
+
+def _own_series(db: Session, series_id: int, u: User) -> Series:
+    s = db.get(Series, series_id)
+    if not s or s.owner_id != u.id:
+        raise HTTPException(404, "No such series")
+    return s
+
+
+@app.get("/v1/series")
+def list_series(u: User = Depends(current_user), db: Session = Depends(get_db)):
+    rows = db.execute(select(Series).where(Series.owner_id == u.id)
+                      .order_by(Series.created_at)).scalars().all()
+    return {"series": [_series_card(s, for_owner=True) for s in rows]}
+
+
+@app.post("/v1/series")
+def create_series(payload: dict, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    name = (payload.get("name") or "").strip()[:80]
+    if not name:
+        raise HTTPException(400, "Give the series a name")
+    s = Series(owner_id=u.id, name=name)
+    db.add(s)
+    for vid in payload.get("video_ids") or []:
+        v = db.get(Video, int(vid))
+        if v and v.user_id == u.id:
+            s.items.append(SeriesVideo(video_id=v.id))
+    db.commit(); db.refresh(s)
+    return _series_card(s, for_owner=True)
+
+
+@app.post("/v1/series/{series_id}/videos")
+def add_to_series(series_id: int, payload: dict, u: User = Depends(current_user),
+                  db: Session = Depends(get_db)):
+    """Put a video in the series — and, the live part, in front of everyone
+    who already accepted the series."""
+    s = _own_series(db, series_id, u)
+    v = db.get(Video, int(payload.get("video_id") or 0))
+    if not v or v.user_id != u.id:
+        raise HTTPException(404, "No such video")
+    if not any(i.video_id == v.id for i in s.items):
+        s.items.append(SeriesVideo(video_id=v.id))
+        db.flush()
+        for sg in s.grants:
+            if sg.active:
+                _materialise(db, sg)
+    db.commit(); db.refresh(s)
+    return _series_card(s, for_owner=True)
+
+
+@app.delete("/v1/series/{series_id}/videos/{video_id}")
+def remove_from_series(series_id: int, video_id: int, u: User = Depends(current_user),
+                       db: Session = Depends(get_db)):
+    """Takes the video out of the folder. Grants it already made stay — they
+    are ordinary shares now, revocable one by one."""
+    s = _own_series(db, series_id, u)
+    s.items = [i for i in s.items if i.video_id != video_id]
+    db.commit(); db.refresh(s)
+    return _series_card(s, for_owner=True)
+
+
+@app.delete("/v1/series/{series_id}")
+def delete_series(series_id: int, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Ends every share the series made, then removes the folder. The videos stay."""
+    s = _own_series(db, series_id, u)
+    for sg in s.grants:
+        if sg.revoked_at is None:
+            _end_series_grant(sg, db)
+    db.delete(s)
+    db.commit()
+    return {"ok": True, "deleted": series_id}
+
+
+@app.delete("/v1/series/grants/{series_grant_id}")
+def revoke_series_grant(series_grant_id: int, u: User = Depends(current_user),
+                        db: Session = Depends(get_db)):
+    """The owner takes a series back from one person — every video it brought."""
+    sg = db.get(SeriesGrant, series_grant_id)
+    if not sg or sg.owner_id != u.id:
+        raise HTTPException(404, "No such share")
+    _end_series_grant(sg, db)
+    db.commit()
+    return {"ok": True}
 
 
 # ── groups: people you share with together ─────────────────────────────────
@@ -862,10 +1062,22 @@ def group_wall(group_id: int, u: User = Depends(current_user), db: Session = Dep
             lessons[r["reply_to"]]["replies"].append(r)
         else:
             loose.append(r)
+    # Series first: a video that came through a series shows under it.
+    by_series: dict[int | None, dict] = {}
+    for card in lessons.values():
+        grant = next((gr for gr in grants if gr.video_id == card["id"] and gr.owner_id == g.owner_id
+                      and gr.series_grant_id), None)
+        sg = db.get(SeriesGrant, grant.series_grant_id) if grant else None
+        key = sg.series_id if sg else None
+        entry = by_series.setdefault(key, {"id": key, "name": sg.series.name if sg else None, "videos": []})
+        entry["videos"].append(card)
+    series_out = sorted([e for e in by_series.values() if e["id"] is not None], key=lambda e: e["name"])
+    loose_videos = by_series.get(None, {"videos": []})["videos"]
     return {"group": dict(_group_card(g), owner={"handle": g.owner.handle,
                                                  "display_name": g.owner.display_name},
                           mine=owner),
-            "lessons": sorted(lessons.values(), key=lambda c: c["id"], reverse=True),
+            "series": [dict(e, videos=sorted(e["videos"], key=lambda c: c["id"])) for e in series_out],
+            "lessons": sorted(loose_videos, key=lambda c: c["id"], reverse=True),
             "replies": loose}
 
 

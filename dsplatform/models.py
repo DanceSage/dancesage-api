@@ -96,6 +96,10 @@ class Grant(Base):
     # the class, or a member sharing back. That is what files it on the wall.
     group_id: Mapped[int | None] = mapped_column(ForeignKey("groups.id"), nullable=True,
                                                  default=None, index=True)
+    # Set when the grant came from a series share — the standing offer that
+    # made it, so revoking the series finds all of them.
+    series_grant_id: Mapped[int | None] = mapped_column(ForeignKey("series_grants.id"),
+                                                        nullable=True, default=None, index=True)
 
     owner: Mapped[User] = relationship(foreign_keys=[owner_id])
     viewer: Mapped[User] = relationship(foreign_keys=[viewer_id])
@@ -139,3 +143,60 @@ class GroupMember(Base):
 
     group: Mapped[Group] = relationship(back_populates="members")
     user: Mapped[User] = relationship(foreign_keys=[user_id])
+
+
+class Series(Base):
+    """A folder in My videos: a class, a course, a term. A video can sit in
+    several. Sharing a series is a standing offer — every video in it now,
+    and every one added later, one ordinary grant per person each."""
+    __tablename__ = "series"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    owner: Mapped[User] = relationship(foreign_keys=[owner_id])
+    items: Mapped[list["SeriesVideo"]] = relationship(back_populates="series",
+                                                      cascade="all, delete-orphan",
+                                                      order_by="SeriesVideo.added_at")
+    grants: Mapped[list["SeriesGrant"]] = relationship(back_populates="series",
+                                                       cascade="all, delete-orphan")
+
+
+class SeriesVideo(Base):
+    __tablename__ = "series_videos"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    series_id: Mapped[int] = mapped_column(ForeignKey("series.id"), index=True)
+    video_id: Mapped[int] = mapped_column(ForeignKey("videos.id"), index=True)
+    added_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    series: Mapped[Series] = relationship(back_populates="items")
+    video: Mapped[Video] = relationship(foreign_keys=[video_id])
+
+
+class SeriesGrant(Base):
+    """One person's standing access to a series: an offer until accepted, then
+    the source of a video grant for each video, present and future."""
+    __tablename__ = "series_grants"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    series_id: Mapped[int] = mapped_column(ForeignKey("series.id"), index=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    viewer_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    group_id: Mapped[int | None] = mapped_column(ForeignKey("groups.id"), nullable=True,
+                                                 default=None, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    accepted_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+
+    series: Mapped[Series] = relationship(back_populates="grants")
+    owner: Mapped[User] = relationship(foreign_keys=[owner_id])
+    viewer: Mapped[User] = relationship(foreign_keys=[viewer_id])
+    group: Mapped["Group | None"] = relationship(foreign_keys=[group_id])
+
+    @property
+    def pending(self) -> bool:
+        return self.revoked_at is None and self.accepted_at is None
+
+    @property
+    def active(self) -> bool:
+        return self.revoked_at is None and self.accepted_at is not None
