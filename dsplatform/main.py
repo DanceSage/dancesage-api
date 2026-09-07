@@ -511,8 +511,11 @@ def _shared_with(me: User, db: Session) -> list[dict]:
                                             Grant.revoked_at.is_(None))).scalars().all()
     out = []
     for g in grants:
+        # Anything the grant lets them see: a clip marked Shared, or one the
+        # owner made public after (or before) sharing it. Only Private hides
+        # it — the same rule _may_view enforces when they open it.
         vids = [v for v in g.owner.videos
-                if v.visibility == "granted" and g.video_id == v.id]
+                if v.visibility != "private" and g.video_id == v.id]
         if vids:
             out.append({"handle": g.owner.handle,
                         "display_name": g.owner.display_name,
