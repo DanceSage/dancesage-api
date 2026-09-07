@@ -46,6 +46,10 @@ class Video(Base):
     pose2d_key: Mapped[str] = mapped_column(String(200), default="")  # 2D track, overlays video
     video_key: Mapped[str] = mapped_column(String(200), default="")   # empty = skeleton only
     dancers: Mapped[int] = mapped_column(Integer, default=1)
+    # An attempt at someone's video says which one — that is what files it
+    # under the lesson on a group's wall.
+    reply_to: Mapped[int | None] = mapped_column(ForeignKey("videos.id"), nullable=True,
+                                                 default=None, index=True)
     frames: Mapped[int] = mapped_column(Integer, default=0)
     fps: Mapped[float] = mapped_column(Float, default=30.0)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)

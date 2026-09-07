@@ -59,6 +59,10 @@ def _migrate_grant_offers():
             if cols and "group_id" not in cols:
                 conn.execute(text("ALTER TABLE grants ADD COLUMN group_id INTEGER"))
                 print("grants: added group_id", flush=True)
+            vcols = [row[1] for row in conn.execute(text("PRAGMA table_info(videos)"))]
+            if vcols and "reply_to" not in vcols:
+                conn.execute(text("ALTER TABLE videos ADD COLUMN reply_to INTEGER"))
+                print("videos: added reply_to", flush=True)
     except Exception as e:
         print(f"grant offers migration skipped: {e}", flush=True)
 
@@ -346,6 +350,7 @@ async def upload(
     pose2d: str = Form(""),           # JSON: {"j": [[[x,y]…]…]} — overlays the video
     times: str = Form(""),            # JSON: seconds per frame, as actually captured
     visibility: str = Form("private"),  # private by default; going public is a choice
+    reply_to: int | None = Form(None),  # the video this is an attempt at, if any
     video: UploadFile | None = File(None),
     u: User = Depends(current_user),
     db: Session = Depends(get_db),
@@ -392,10 +397,13 @@ async def upload(
         st.put_video(stem.replace("/", "-"), await video.read())
         video_key = stem.replace("/", "-")
 
+    # Only a video the poster can see may be answered; otherwise the id is noise.
+    if reply_to is not None and not _may_view(db.get(Video, reply_to), u, db):
+        reply_to = None
     v = Video(user_id=u.id, title=title, note=note, style=style, level=level,
               pose_key=f"{stem}-3d", pose2d_key=pose2d_key, video_key=video_key,
               dancers=len(p3["j"]), frames=frames, fps=int(fps),
-              visibility=visibility)
+              visibility=visibility, reply_to=reply_to)
     db.add(v); db.commit(); db.refresh(v)
     return {"id": v.id, "url": f"/v/{v.id}", "profile": f"/@{u.handle}",
             "visibility": v.visibility}
@@ -531,7 +539,7 @@ def _card(v: Video) -> dict:
             "visibility": v.visibility, "frames": v.frames, "fps": int(v.fps or 30),
             "has_video": v.has_video, "dancers": v.dancers,
             "pose_key": v.pose_key, "pose2d_key": v.pose2d_key,
-            "video_key": v.video_key, "note": v.note,
+            "video_key": v.video_key, "note": v.note, "reply_to": v.reply_to,
             "by": {"handle": v.user.handle, "display_name": v.user.display_name,
                    "avatar": f"/avatar/{v.user.handle}.jpg" if v.user.avatar_key else ""}}
 
@@ -831,17 +839,23 @@ def group_wall(group_id: int, u: User = Depends(current_user), db: Session = Dep
         if v is None:
             continue
         if gr.owner_id == g.owner_id:
-            card = lessons.setdefault(v.id, dict(_card(v), members=[]))
+            card = lessons.setdefault(v.id, dict(_card(v), members=[], replies=[]))
             card["members"].append({"handle": gr.viewer.handle, "accepted": gr.accepted_at is not None,
                                     "grant_id": gr.id if gr.viewer_id == u.id else None})
         elif owner or gr.owner_id == u.id:
             replies.append(dict(_card(v), grant_id=gr.id if owner else None))
-    replies.sort(key=lambda c: c["id"], reverse=True)
+    # A reply that names its lesson sits under it; the rest stay loose.
+    loose = []
+    for r in sorted(replies, key=lambda c: c["id"], reverse=True):
+        if r["reply_to"] in lessons:
+            lessons[r["reply_to"]]["replies"].append(r)
+        else:
+            loose.append(r)
     return {"group": dict(_group_card(g), owner={"handle": g.owner.handle,
                                                  "display_name": g.owner.display_name},
                           mine=owner),
             "lessons": sorted(lessons.values(), key=lambda c: c["id"], reverse=True),
-            "replies": replies}
+            "replies": loose}
 
 
 @app.get("/g/{group_id}", response_class=HTMLResponse)

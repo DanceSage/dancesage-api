@@ -270,7 +270,10 @@ def test_a_group_has_a_wall_and_members_share_back():
     _accept_all(maya)
 
     # Maya shares an attempt back: it reaches the teacher at once, filed under the group.
-    attempt = _post(maya, "Enchufla — my attempt", "private")
+    # Maya's attempt names the lesson it answers.
+    pose = json.dumps({"j": [[[[0.1 * j, 0.2 * j, 0.0] for j in range(33)] for _ in range(4)]]})
+    attempt = client.post("/v1/videos", data={"title": "Enchufla — my attempt", "pose3d": pose, "pose2d": pose,
+                                              "reply_to": lesson}, headers=hdr(maya)).json()["id"]
     r = client.post(f"/v1/groups/{gid}/share", json={"video_id": attempt}, headers=hdr(maya))
     assert r.status_code == 200, r.text
     assert "Enchufla — my attempt" in _inbox_titles(teacher)
@@ -280,7 +283,9 @@ def test_a_group_has_a_wall_and_members_share_back():
     assert wall["group"]["mine"] is True
     assert [l["title"] for l in wall["lessons"]] == ["Enchufla"]
     assert sorted((m["handle"], m["accepted"]) for m in wall["lessons"][0]["members"]) == [("lee", False), ("mia", True)]
-    assert [(v["title"], v["by"]["handle"]) for v in wall["replies"]] == [("Enchufla — my attempt", "mia")]
+    # …and the wall files it under that lesson, not loose.
+    assert wall["replies"] == []
+    assert [(v["title"], v["by"]["handle"]) for v in wall["lessons"][0]["replies"]] == [("Enchufla — my attempt", "mia")]
     assert client.get(f"/v/{attempt}", cookies={"ds_session": teacher}).status_code == 200
 
     # Leo sees the lesson and his own (empty) replies, not Maya's; a stranger sees nothing.
@@ -293,7 +298,7 @@ def test_a_group_has_a_wall_and_members_share_back():
 
     # The wall page: the teacher sees the reply; Leo sees the lesson and a way to share back.
     page = client.get(f"/g/{gid}", cookies={"ds_session": teacher}).text
-    assert "Enchufla — my attempt" in page and "Shared back by members" in page
+    assert "Enchufla — my attempt" in page and "Attempts" in page and "Other videos shared back" in page
     page = client.get(f"/g/{gid}", cookies={"ds_session": leo}).text
     assert "Share back" in page and "Enchufla — my attempt" not in page
     assert client.get(f"/g/{gid}", cookies={"ds_session": other}).status_code == 404
