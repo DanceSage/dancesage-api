@@ -215,8 +215,19 @@ def profile(handle: str, request: Request, me: User | None = Depends(optional_us
             continue
         passed_on.append({"video": v, "by": g.owner})
     passed_on.sort(key=lambda x: x["video"].created_at, reverse=True)
+    # A teacher's series are folders on their public page too, holding the
+    # videos the reader may see; the rest stay as single posts below.
+    folders, filed = [], set()
+    for s in db.execute(select(Series).where(Series.owner_id == u.id)
+                        .order_by(Series.created_at)).scalars().all():
+        inside = [i.video for i in s.items if i.video in vids]
+        if inside:
+            folders.append({"name": s.name, "videos": inside})
+            filed.update(v.id for v in inside)
+    loose = [v for v in vids if v.id not in filed]
     return templates.TemplateResponse(request, "profile.html",
-                                      {"u": u, "videos": vids, "passed_on": passed_on,
+                                      {"u": u, "videos": vids, "folders": folders, "loose": loose,
+                                       "passed_on": passed_on,
                                        "is_owner": bool(me) and me.id == u.id,
                                        "has_access": shared})
 

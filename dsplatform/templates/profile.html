@@ -25,8 +25,7 @@
       Share profile</button>
   </div>
 </div>
-<div class="grid">
-  {% for v in videos %}
+{% macro vcard(v) %}
   <a class="card" href="/v/{{ v.id }}">
     <canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas>
     <div class="meta">
@@ -34,9 +33,23 @@
       <div class="s">{{ v.level }} &middot; {{ v.seconds }}s{% if v.has_video %} &middot; video{% endif %}{% if v.dancers > 1 %} &middot; partner{% endif %}</div>
     </div>
   </a>
-  {% endfor %}
+{% endmacro %}
+{% for f in folders %}
+<div class="folder">
+  <div class="folder-head"><span>&#128193;</span> {{ f.name }} <span class="cnt">series &middot; {{ f.videos|length }} video{{ '' if f.videos|length == 1 else 's' }}</span></div>
+  <div class="grid">{% for v in f.videos %}{{ vcard(v) }}{% endfor %}</div>
+</div>
+{% endfor %}
+{% if loose and folders %}<div class="folder-head" style="margin-top:18px">Single videos</div>{% endif %}
+<div class="grid">
+  {% for v in loose %}{{ vcard(v) }}{% endfor %}
 </div>
 {% if not videos %}<p class="sub">Nothing published yet.</p>{% endif %}
+<style>
+  .folder{margin-bottom:22px}
+  .folder-head{font-weight:700;margin:8px 0 10px;display:flex;align-items:center;gap:8px}
+  .folder-head .cnt{font-weight:400;color:var(--muted);font-size:.78rem}
+</style>
 {% if passed_on %}
 <h2 style="font-size:1.05rem;margin:34px 0 4px">Shared with {{ u.display_name }}</h2>
 <p class="sub" style="margin:0 0 14px">Public videos other dancers shared with {{ u.display_name }}.</p>
