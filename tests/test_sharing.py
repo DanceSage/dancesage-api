@@ -68,3 +68,53 @@ def test_a_public_video_shared_by_grant_still_reaches_the_inbox():
     client.post(f"/v1/videos/{private}/visibility", json={"visibility": "private"},
                 headers={"Authorization": f"Bearer {owner}"})
     assert _inbox_titles(viewer) == ["Social dancing"]
+
+
+def test_groups_share_with_everyone_at_once_and_anyone_can_decline():
+    teacher = _user("teach")
+    maya, leo, zoe = _user("maya"), _user("leo"), _user("zoe")
+    clip = _post(teacher, "Cross body lead", "private")
+
+    # A class, named, with two members; a third joins later; a stranger can't be added.
+    r = client.post("/v1/groups", json={"name": "Tuesday bachata", "handles": ["@maya", "leo"]},
+                    headers={"Authorization": f"Bearer {teacher}"})
+    assert r.status_code == 200, r.text
+    gid = r.json()["id"]
+    assert [m["handle"] for m in r.json()["members"]] == ["maya", "leo"]
+    assert client.post(f"/v1/groups/{gid}/members", json={"handle": "zoe"},
+                       headers={"Authorization": f"Bearer {teacher}"}).status_code == 200
+    assert client.post(f"/v1/groups/{gid}/members", json={"handle": "ghost"},
+                       headers={"Authorization": f"Bearer {teacher}"}).status_code == 404
+    assert client.get("/v1/groups", headers={"Authorization": f"Bearer {maya}"}).json()["groups"] == []
+
+    # One share, three grants — and the clip is marked Shared.
+    r = client.post("/v1/grants", json={"group_id": gid, "video_id": clip},
+                    headers={"Authorization": f"Bearer {teacher}"})
+    assert r.status_code == 200, r.text
+    assert sorted(g["handle"] for g in r.json()["granted"]) == ["leo", "maya", "zoe"]
+    for who in (maya, leo, zoe):
+        assert _inbox_titles(who) == ["Cross body lead"]
+
+    # Two clips from one teacher arrive as one sender, not one entry per grant.
+    second = _post(teacher, "Copa", "private")
+    client.post("/v1/grants", json={"group_id": gid, "video_id": second},
+                headers={"Authorization": f"Bearer {teacher}"})
+    inbox = client.get("/v1/shared", headers={"Authorization": f"Bearer {maya}"}).json()["from"]
+    assert len(inbox) == 1 and inbox[0]["handle"] == "teach"
+    assert sorted(v["title"] for v in inbox[0]["videos"]) == ["Copa", "Cross body lead"]
+    assert all("grant_id" in v for v in inbox[0]["videos"])
+
+    # Maya declines one; it leaves her inbox and the teacher's ledger. Leo keeps his.
+    declined = next(v for v in inbox[0]["videos"] if v["title"] == "Copa")["grant_id"]
+    assert client.delete(f"/v1/shared/{declined}", headers={"Authorization": f"Bearer {leo}"}).status_code == 404
+    assert client.delete(f"/v1/shared/{declined}", headers={"Authorization": f"Bearer {maya}"}).status_code == 200
+    assert _inbox_titles(maya) == ["Cross body lead"]
+    assert sorted(_inbox_titles(leo)) == ["Copa", "Cross body lead"]
+    ledger = client.get("/v1/grants", headers={"Authorization": f"Bearer {teacher}"}).json()["grants"]
+    assert not any(g["handle"] == "maya" and g["scope"] == "Copa" for g in ledger)
+
+    # Leaving the group takes nothing back; deleting it neither.
+    client.delete(f"/v1/groups/{gid}/members/zoe", headers={"Authorization": f"Bearer {teacher}"})
+    assert sorted(_inbox_titles(zoe)) == ["Copa", "Cross body lead"]
+    assert client.delete(f"/v1/groups/{gid}", headers={"Authorization": f"Bearer {teacher}"}).status_code == 200
+    assert sorted(_inbox_titles(zoe)) == ["Copa", "Cross body lead"]

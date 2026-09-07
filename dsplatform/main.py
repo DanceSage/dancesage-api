@@ -15,7 +15,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 
 from .db import get_db, Base, engine, SessionLocal
-from .models import User, Video, Grant
+from .models import User, Video, Grant, Group, GroupMember
 from .storage import get_storage, LocalStorage
 from .auth import (verify_provider_token, issue_session, current_user,
                     optional_user, COOKIE, SECRET)
@@ -509,19 +509,24 @@ def _shared_with(me: User, db: Session) -> list[dict]:
     of a grant — the same list the app's inbox and the web's page draw from."""
     grants = db.execute(select(Grant).where(Grant.viewer_id == me.id,
                                             Grant.revoked_at.is_(None))).scalars().all()
-    out = []
+    by_owner: dict[int, dict] = {}
     for g in grants:
         # Anything the grant lets them see: a clip marked Shared, or one the
         # owner made public after (or before) sharing it. Only Private hides
         # it — the same rule _may_view enforces when they open it.
-        vids = [v for v in g.owner.videos
-                if v.visibility != "private" and g.video_id == v.id]
-        if vids:
-            out.append({"handle": g.owner.handle,
-                        "display_name": g.owner.display_name,
-                        "avatar": f"/avatar/{g.owner.handle}.jpg" if g.owner.avatar_key else "",
-                        "videos": [_card(v) for v in
-                                   sorted(vids, key=lambda v: v.created_at, reverse=True)]})
+        v = g.video
+        if v is None or v.visibility == "private" or v.user_id != g.owner_id:
+            continue
+        entry = by_owner.setdefault(g.owner_id, {
+            "handle": g.owner.handle,
+            "display_name": g.owner.display_name,
+            "avatar": f"/avatar/{g.owner.handle}.jpg" if g.owner.avatar_key else "",
+            "videos": []})
+        # The grant id rides with the card: declining is revoking from this end.
+        entry["videos"].append(dict(_card(v), grant_id=g.id))
+    out = list(by_owner.values())
+    for entry in out:
+        entry["videos"].sort(key=lambda c: c["id"], reverse=True)
     return out
 
 
@@ -589,6 +594,10 @@ def delete_account(u: User = Depends(current_user), db: Session = Depends(get_db
             pass
     # Grants both ways: what they gave out, and what was given to them.
     db.execute(delete(Grant).where((Grant.owner_id == u.id) | (Grant.viewer_id == u.id)))
+    # Groups they own go; their seat in other people's groups goes too.
+    for g in db.execute(select(Group).where(Group.owner_id == u.id)).scalars().all():
+        db.delete(g)
+    db.execute(delete(GroupMember).where(GroupMember.user_id == u.id))
     handle = u.handle
     db.delete(u)
     db.commit()
@@ -611,42 +620,158 @@ def list_grants(u: User = Depends(current_user), db: Session = Depends(get_db)):
                        for g in rows]}
 
 
+def _grant(db: Session, owner: User, viewer: User, v: Video) -> Grant:
+    """One person, one video. Re-granting someone you revoked reuses the row
+    rather than piling up history."""
+    existing = db.execute(select(Grant).where(
+        Grant.owner_id == owner.id, Grant.viewer_id == viewer.id,
+        Grant.video_id == v.id)).scalars().first()
+    if existing:
+        existing.revoked_at = None
+        return existing
+    g = Grant(owner_id=owner.id, viewer_id=viewer.id, video_id=v.id)
+    db.add(g)
+    return g
+
+
 @app.post("/v1/grants")
 def add_grant(payload: dict, u: User = Depends(current_user),
               db: Session = Depends(get_db)):
-    """Let one person see your shared videos. Idempotent — granting twice is fine."""
-    handle = (payload.get("handle") or "").strip().lstrip("@").lower()
-    if not handle:
-        raise HTTPException(400, "handle required")
-    viewer = db.execute(select(User).where(User.handle == handle)).scalar_one_or_none()
-    if not viewer:
-        raise HTTPException(404, f"Nobody here is called @{handle}")
-    if viewer.id == u.id:
-        raise HTTPException(400, "You can already see your own videos")
-
+    """Let one person — or everyone in one of your groups — see a video.
+    Idempotent: granting twice is fine."""
     video_id = payload.get("video_id")
     if video_id is None:
         raise HTTPException(400, "video_id required — access is granted per video")
     v = db.get(Video, int(video_id))
     if not v or v.user_id != u.id:
         raise HTTPException(404, "No such video")
+
+    viewers: list[User] = []
+    handle = (payload.get("handle") or "").strip().lstrip("@").lower()
+    group_id = payload.get("group_id")
+    if handle:
+        viewer = db.execute(select(User).where(User.handle == handle)).scalar_one_or_none()
+        if not viewer:
+            raise HTTPException(404, f"Nobody here is called @{handle}")
+        if viewer.id == u.id:
+            raise HTTPException(400, "You can already see your own videos")
+        viewers = [viewer]
+    elif group_id is not None:
+        group = db.get(Group, int(group_id))
+        if not group or group.owner_id != u.id:
+            raise HTTPException(404, "No such group")
+        viewers = [m.user for m in group.members if m.user_id != u.id]
+        if not viewers:
+            raise HTTPException(400, f"“{group.name}” has no members yet")
+    else:
+        raise HTTPException(400, "handle or group_id required")
+
     # Sharing a clip is what makes it shared; asking twice would be a trap.
     if v.visibility == "private":
         v.visibility = "granted"
+    grants = [_grant(db, u, viewer, v) for viewer in viewers]
+    db.commit()
+    for g in grants:
+        db.refresh(g)
+    first = grants[0]
+    return {"id": first.id, "handle": first.viewer.handle,
+            "display_name": first.viewer.display_name, "video_id": v.id,
+            "granted": [{"id": g.id, "handle": g.viewer.handle,
+                         "display_name": g.viewer.display_name} for g in grants]}
 
-    existing = db.execute(select(Grant).where(
-        Grant.owner_id == u.id, Grant.viewer_id == viewer.id,
-        Grant.video_id == int(video_id))).scalars().first()
-    if existing:
-        # Re-granting someone you revoked reuses the row rather than piling up history.
-        existing.revoked_at = None
-        g = existing
-    else:
-        g = Grant(owner_id=u.id, viewer_id=viewer.id, video_id=int(video_id))
-        db.add(g)
+
+@app.delete("/v1/shared/{grant_id}")
+def decline_share(grant_id: int, u: User = Depends(current_user),
+                  db: Session = Depends(get_db)):
+    """Turn down something shared with you. The same timestamp the owner's
+    revoke sets — the grant is over either way, and the owner sees it gone."""
+    g = db.get(Grant, grant_id)
+    if not g or g.viewer_id != u.id:
+        raise HTTPException(404, "No such share")
+    g.revoked_at = dt.datetime.utcnow()
+    db.commit()
+    return {"ok": True, "declined": grant_id}
+
+
+# ── groups: people you share with together ─────────────────────────────────
+
+def _group_card(g: Group) -> dict:
+    return {"id": g.id, "name": g.name,
+            "members": [{"handle": m.user.handle, "display_name": m.user.display_name,
+                         "avatar": f"/avatar/{m.user.handle}.jpg" if m.user.avatar_key else ""}
+                        for m in g.members]}
+
+
+def _own_group(db: Session, group_id: int, u: User) -> Group:
+    g = db.get(Group, group_id)
+    if not g or g.owner_id != u.id:
+        raise HTTPException(404, "No such group")
+    return g
+
+
+def _add_member(db: Session, g: Group, handle: str, u: User) -> None:
+    handle = handle.strip().lstrip("@").lower()
+    if not handle:
+        return
+    member = db.execute(select(User).where(User.handle == handle)).scalar_one_or_none()
+    if not member:
+        raise HTTPException(404, f"Nobody here is called @{handle}")
+    if member.id == u.id:
+        raise HTTPException(400, "You are the group's owner — no need to add yourself")
+    if any(m.user_id == member.id for m in g.members):
+        return
+    g.members.append(GroupMember(user_id=member.id))
+
+
+@app.get("/v1/groups")
+def list_groups(u: User = Depends(current_user), db: Session = Depends(get_db)):
+    rows = db.execute(select(Group).where(Group.owner_id == u.id)
+                      .order_by(Group.created_at)).scalars().all()
+    return {"groups": [_group_card(g) for g in rows]}
+
+
+@app.post("/v1/groups")
+def create_group(payload: dict, u: User = Depends(current_user),
+                 db: Session = Depends(get_db)):
+    """A named group, optionally with its first members."""
+    name = (payload.get("name") or "").strip()[:60]
+    if not name:
+        raise HTTPException(400, "Give the group a name")
+    g = Group(owner_id=u.id, name=name)
+    db.add(g)
+    for h in payload.get("handles") or []:
+        _add_member(db, g, str(h), u)
     db.commit(); db.refresh(g)
-    return {"id": g.id, "handle": viewer.handle, "display_name": viewer.display_name,
-            "video_id": g.video_id}
+    return _group_card(g)
+
+
+@app.post("/v1/groups/{group_id}/members")
+def add_group_member(group_id: int, payload: dict, u: User = Depends(current_user),
+                     db: Session = Depends(get_db)):
+    g = _own_group(db, group_id, u)
+    _add_member(db, g, payload.get("handle") or "", u)
+    db.commit(); db.refresh(g)
+    return _group_card(g)
+
+
+@app.delete("/v1/groups/{group_id}/members/{handle}")
+def remove_group_member(group_id: int, handle: str, u: User = Depends(current_user),
+                        db: Session = Depends(get_db)):
+    """Leaves existing grants alone: what was shared stays shared until revoked."""
+    g = _own_group(db, group_id, u)
+    handle = handle.strip().lstrip("@").lower()
+    g.members = [m for m in g.members if m.user.handle != handle]
+    db.commit(); db.refresh(g)
+    return _group_card(g)
+
+
+@app.delete("/v1/groups/{group_id}")
+def delete_group(group_id: int, u: User = Depends(current_user),
+                 db: Session = Depends(get_db)):
+    g = _own_group(db, group_id, u)
+    db.delete(g)
+    db.commit()
+    return {"ok": True, "deleted": group_id}
 
 
 @app.delete("/v1/grants/{grant_id}")

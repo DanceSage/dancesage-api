@@ -92,3 +92,33 @@ class Grant(Base):
     @property
     def active(self) -> bool:
         return self.revoked_at is None
+
+
+class Group(Base):
+    """People you share with together — a class, a team, a Tuesday crowd.
+
+    A group is the owner's shorthand, nothing more: sharing a video with it
+    writes one ordinary grant per member, so everything downstream — the
+    inbox, revoking, declining — stays per person and per video. Leaving the
+    group later does not take back what was already shared; that is a grant,
+    and grants are revoked one by one, on purpose.
+    """
+    __tablename__ = "groups"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(60))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    owner: Mapped[User] = relationship(foreign_keys=[owner_id])
+    members: Mapped[list["GroupMember"]] = relationship(back_populates="group",
+                                                        cascade="all, delete-orphan")
+
+
+class GroupMember(Base):
+    __tablename__ = "group_members"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+    group: Mapped[Group] = relationship(back_populates="members")
+    user: Mapped[User] = relationship(foreign_keys=[user_id])

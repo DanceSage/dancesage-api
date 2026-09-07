@@ -28,6 +28,18 @@ shows only what is marked public.</p>
   nothing else.</p>
   <ul id="glist" class="glist"></ul>
 </div>
+<div class="share-box">
+  <h2>Groups</h2>
+  <p class="sub" style="margin-bottom:12px">Share one clip with a whole class at once.
+  Adding someone to a group does not share anything by itself.</p>
+  <div class="share-row" style="max-width:520px">
+    <input id="gname" placeholder="Group name, e.g. Tuesday bachata" style="flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:6px 9px;border-radius:7px;font-size:.8rem">
+    <input id="ghandles" placeholder="@handles, comma-separated" autocapitalize="none" autocorrect="off" style="flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:6px 9px;border-radius:7px;font-size:.8rem">
+    <button id="gcreate" class="share-go">Create</button>
+  </div>
+  <div id="gmsg" class="share-msg"></div>
+  <ul id="grouplist" class="glist" style="max-width:520px"></ul>
+</div>
 <div class="grid">
   {% for v in videos %}
   <div class="card">
@@ -55,6 +67,10 @@ shows only what is marked public.</p>
               <span class="at">@</span><input placeholder="their handle"
                 autocapitalize="none" autocorrect="off">
               <button class="share-go">Add</button>
+            </div>
+            <div class="share-row share-group" hidden>
+              <select class="share-pick"></select>
+              <button class="share-go share-go-group">Share</button>
             </div>
             <div class="share-msg"></div>
             <ul class="share-who"></ul>
@@ -125,27 +141,24 @@ shows only what is marked public.</p>
     font:600 .74rem var(--mono);text-transform:uppercase;letter-spacing:.04em}
 </style>
 {% if shared %}
-<div class="share-box" style="margin-top:34px">
+<div class="share-box" style="margin-top:34px;margin-bottom:14px">
   <h2>Shared with you</h2>
-  <p class="sub" style="margin-bottom:12px">Videos other dancers let you see. Only
-  the clips they chose — and only for as long as they choose.</p>
+  <p class="sub" style="margin:0">Clips other dancers let you see — only the ones they
+  chose, for as long as they choose. Decline one and it leaves this page.</p>
 </div>
-{% for who in shared %}
-<p class="sub" style="margin:14px 0 8px">
-  <a href="/@{{ who.handle }}" style="color:var(--teal)">{{ who.display_name }}</a>
-  &middot; @{{ who.handle }}</p>
 <div class="grid">
-  {% for v in who.videos %}
-  <div class="card">
+  {% for who in shared %}{% for v in who.videos %}
+  <div class="card" data-grant="{{ v.grant_id }}">
     <a href="/v/{{ v.id }}"><canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas></a>
     <div class="meta">
       <div class="t">{{ v.title }}</div>
-      <div class="s">{{ (v.frames // v.fps) if v.fps else 0 }}s{% if v.has_video %} &middot; video{% endif %}{% if v.dancers > 1 %} &middot; two dancers{% endif %}</div>
+      <div class="s">from <a href="/@{{ who.handle }}" style="color:var(--teal)">{{ who.display_name }}</a>
+        &middot; {{ (v.frames // v.fps) if v.fps else 0 }}s{% if v.has_video %} &middot; video{% endif %}{% if v.dancers > 1 %} &middot; two dancers{% endif %}</div>
+      <button class="decline" style="margin-top:8px;background:none;border:1px solid var(--line);color:var(--rose);border-radius:999px;padding:4px 11px;font:600 .74rem var(--font-body);cursor:pointer">Decline</button>
     </div>
   </div>
-  {% endfor %}
+  {% endfor %}{% endfor %}
 </div>
-{% endfor %}
 {% endif %}
 {% endblock %}
 {% block js %}<script>
@@ -232,6 +245,27 @@ document.querySelectorAll('.vmenu').forEach(menu => {
   menu.querySelector('.share-go').onclick = add;
   input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
 
+  // a group, when you have any: one click, one grant per member
+  const groupRow = menu.querySelector('.share-group');
+  const pick = menu.querySelector('.share-pick');
+  function offerGroups() {
+    pick.innerHTML = GROUPS.map(g => `<option value="${g.id}">${g.name} (${g.members.length})</option>`).join('');
+    groupRow.hidden = GROUPS.length === 0;
+  }
+  groupOffers.push(offerGroups);
+  menu.querySelector('.share-go-group').onclick = async () => {
+    msg.textContent = '';
+    const r = await fetch('/v1/grants', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ group_id: Number(pick.value), video_id: Number(id) })
+    });
+    if (r.ok) {
+      btn.className = 'vbtn state-granted';
+      menu.querySelector('.vlabel').textContent = LABEL.granted;
+      refresh(); loadGrants();
+    } else msg.textContent = (await r.json()).detail || 'Could not share with that group.';
+  };
+
   // deletion
   menu.querySelector('.vdel').onclick = async () => {
     if (!confirm(`Delete \u201c${menu.dataset.title}\u201d?\n\n`
@@ -240,6 +274,67 @@ document.querySelectorAll('.vmenu').forEach(menu => {
     const r = await fetch(`/v1/videos/${id}`, { method: 'DELETE' });
     if (r.ok) { menu.closest('.card').remove(); loadGrants(); }
     else alert('Could not delete that one.');
+  };
+});
+
+// ── groups ─────────────────────────────────────────────────────────────────
+let GROUPS = [];
+const groupOffers = [];
+const grouplist = document.getElementById('grouplist');
+async function loadGroups() {
+  const r = await fetch('/v1/groups');
+  if (!r.ok) return;
+  GROUPS = (await r.json()).groups;
+  groupOffers.forEach(f => f());
+  grouplist.innerHTML = '';
+  if (!GROUPS.length) {
+    grouplist.innerHTML = '<li style="color:var(--muted);font-size:.85rem">No groups yet</li>';
+    return;
+  }
+  for (const g of GROUPS) {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="gwho"><span class="gname">${g.name}</span>
+      <div class="gscope">${g.members.length ? g.members.map(m => '@' + m.handle).join(', ') : 'nobody yet'}</div></span>
+      <button class="grm gadd" data-id="${g.id}">Add</button>
+      <button class="grm" data-id="${g.id}">Delete</button>`;
+    li.querySelector('.gadd').onclick = async () => {
+      const h = prompt(`Add to “${g.name}” — their handle:`);
+      if (!h) return;
+      const r = await fetch(`/v1/groups/${g.id}/members`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handle: h })
+      });
+      if (!r.ok) alert((await r.json()).detail || 'Could not add them.');
+      loadGroups();
+    };
+    li.querySelectorAll('.grm')[1].onclick = async () => {
+      if (!confirm(`Delete the group “${g.name}”?\n\nNothing already shared is taken back.`)) return;
+      await fetch(`/v1/groups/${g.id}`, { method: 'DELETE' });
+      loadGroups();
+    };
+    grouplist.appendChild(li);
+  }
+}
+document.getElementById('gcreate').onclick = async () => {
+  const msg = document.getElementById('gmsg'); msg.textContent = '';
+  const name = document.getElementById('gname').value.trim();
+  const handles = document.getElementById('ghandles').value.split(/[,\s]+/).map(h => h.replace(/^@/, '')).filter(Boolean);
+  if (!name) { msg.textContent = 'Give the group a name.'; return; }
+  const r = await fetch('/v1/groups', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, handles })
+  });
+  if (r.ok) { document.getElementById('gname').value = ''; document.getElementById('ghandles').value = ''; loadGroups(); }
+  else msg.textContent = (await r.json()).detail || 'Could not create the group.';
+};
+loadGroups();
+
+// ── declining what was shared with you ─────────────────────────────────────
+document.querySelectorAll('.card[data-grant] .decline').forEach(b => {
+  b.onclick = async () => {
+    const card = b.closest('.card');
+    const r = await fetch(`/v1/shared/${card.dataset.grant}`, { method: 'DELETE' });
+    if (r.ok) card.remove(); else alert('Could not decline that one.');
   };
 });
 
