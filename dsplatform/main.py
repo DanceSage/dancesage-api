@@ -471,14 +471,16 @@ def signout():
 
 
 @app.get("/me", response_class=HTMLResponse)
-def my_page(request: Request, u: User | None = Depends(optional_user)):
+def my_page(request: Request, u: User | None = Depends(optional_user),
+            db: Session = Depends(get_db)):
     """Everything you have posted, whatever its visibility. Only you see this."""
     if not u:
         return RedirectResponse("/signin", status_code=303)
     if not u.handle:
         return templates.TemplateResponse(request, "handle.html", {"u": u})
     vids = sorted(u.videos, key=lambda v: v.created_at, reverse=True)
-    return templates.TemplateResponse(request, "me.html", {"u": u, "videos": vids})
+    return templates.TemplateResponse(request, "me.html",
+                                      {"u": u, "videos": vids, "shared": _shared_with(u, db)})
 
 
 # ── browsing ───────────────────────────────────────────────────────────────
@@ -502,9 +504,9 @@ def _visible_videos(db: Session, me: User | None) -> list[Video]:
     return vids
 
 
-@app.get("/v1/shared")
-def shared_with_me(me: User = Depends(current_user), db: Session = Depends(get_db)):
-    """What other people have let you see. The inbound half of a grant."""
+def _shared_with(me: User, db: Session) -> list[dict]:
+    """What other people have let you see, grouped by who. The inbound half
+    of a grant — the same list the app's inbox and the web's page draw from."""
     grants = db.execute(select(Grant).where(Grant.viewer_id == me.id,
                                             Grant.revoked_at.is_(None))).scalars().all()
     out = []
@@ -517,7 +519,12 @@ def shared_with_me(me: User = Depends(current_user), db: Session = Depends(get_d
                         "avatar": f"/avatar/{g.owner.handle}.jpg" if g.owner.avatar_key else "",
                         "videos": [_card(v) for v in
                                    sorted(vids, key=lambda v: v.created_at, reverse=True)]})
-    return {"from": out}
+    return out
+
+
+@app.get("/v1/shared")
+def shared_with_me(me: User = Depends(current_user), db: Session = Depends(get_db)):
+    return {"from": _shared_with(me, db)}
 
 
 # ── deletion ───────────────────────────────────────────────────────────────

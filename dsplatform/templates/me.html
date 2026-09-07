@@ -1,5 +1,29 @@
 {% extends "base.html" %}
-{% block title %}Your videos · Dance Sage{% endblock %}
+{% block title %}Your videos · Dance Sage
+{% if shared %}
+<div class="share-box" style="margin-top:34px">
+  <h2>Shared with you</h2>
+  <p class="sub" style="margin-bottom:12px">Videos other dancers let you see. Only
+  the clips they chose — and only for as long as they choose.</p>
+</div>
+{% for who in shared %}
+<p class="sub" style="margin:14px 0 8px">
+  <a href="/@{{ who.handle }}" style="color:var(--teal)">{{ who.display_name }}</a>
+  &middot; @{{ who.handle }}</p>
+<div class="grid">
+  {% for v in who.videos %}
+  <div class="card">
+    <a href="/v/{{ v.id }}"><canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas></a>
+    <div class="meta">
+      <div class="t">{{ v.title }}</div>
+      <div class="s">{{ (v.frames // v.fps) if v.fps else 0 }}s{% if v.has_video %} &middot; video{% endif %}{% if v.dancers > 1 %} &middot; two dancers{% endif %}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}
 {% block body %}
 <div class="who">
   {% if u.avatar_key %}<img class="av" src="/avatar/{{ u.handle }}.jpg" alt="">
