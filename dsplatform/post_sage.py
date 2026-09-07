@@ -29,7 +29,8 @@ PROFILE = dict(
 # A first, small set: enough to see how a teacher's course reads. The builder
 # made 38; the rest post the day the curriculum wants them.
 FIRST = {("Salsa", 101), ("Salsa", 102), ("Salsa", 106), ("Salsa", 109), ("Salsa", 111), ("Salsa", 116),
-         ("Bachata", 101), ("Bachata", 102), ("Bachata", 104), ("Bachata", 107)}
+         ("Bachata", 101), ("Bachata", 102), ("Bachata", 104), ("Bachata", 107),
+         ("Salsa", 123), ("Salsa", 124), ("Bachata", 113)}   # styling, solo
 MANIFEST = pathlib.Path("/Users/abduradi/Documents/dancesage/dancesage-research/rnd/sage_out/manifest.json")
 
 
