@@ -56,6 +56,7 @@
     <div class="share-title">Share the whole series — every video in it, and every one added later</div>
     <div class="share-row"><span class="at">@</span><input placeholder="their handle" autocapitalize="none" autocorrect="off"><button class="share-go sgo">Share</button></div>
     <div class="share-row share-group" style="margin-top:6px"><select class="share-pick"><option value="">choose a group</option></select><button class="share-go sgo-group">Share</button></div>
+    <a href="#" class="share-manage smanage">Manage groups&hellip;</a>
     <div class="share-msg"></div>
     <ul class="share-who">{% for w in s.shared_with %}<li data-sg="{{ w.grant_id }}" style="{{ '' if w.accepted else 'opacity:.6' }}">@{{ w.handle }}{{ '' if w.accepted else ' · waiting' }}<button title="Revoke">&times;</button></li>{% endfor %}</ul>
   </div>

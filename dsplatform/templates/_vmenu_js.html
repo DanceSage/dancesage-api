@@ -206,6 +206,7 @@ document.querySelectorAll('details.series').forEach(box => {
   }
   box.querySelector('.sgo').onclick = () => { const h = box.querySelector('.sseries input').value.trim().replace(/^@/, ''); if (h) share({ handle: h }); };
   box.querySelector('.sgo-group').onclick = () => { if (!pick.value) { msg.textContent = 'Choose a group.'; return; } share({ group_id: Number(pick.value) }); };
+  box.querySelector('.smanage').onclick = e => { e.preventDefault(); e.stopPropagation(); openGroups(); };
   box.querySelectorAll('li[data-sg] button').forEach(b => b.onclick = async () => {
     await fetch(`/v1/series/grants/${b.parentElement.dataset.sg}`, { method: 'DELETE' }); location.reload();
   });
