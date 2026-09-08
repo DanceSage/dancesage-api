@@ -26,13 +26,8 @@ PROFILE = dict(
         "salsa and bachata, one move at a time. Add a class to your lessons, dance it, "
         "send me your attempt.",
 )
-# A first, small set: enough to see how a teacher's course reads. The builder
-# made 38; the rest post the day the curriculum wants them.
-FIRST = {("Salsa", 101), ("Salsa", 102), ("Salsa", 106), ("Salsa", 109), ("Salsa", 111), ("Salsa", 116),
-         ("Bachata", 101), ("Bachata", 102), ("Bachata", 104), ("Bachata", 107),
-         ("Salsa", 123), ("Salsa", 124), ("Bachata", 113),   # styling, solo
-         ("Salsa", 113), ("Salsa", 117), ("Salsa", 120), ("Salsa", 121),   # intermediate and advanced
-         ("Bachata", 105), ("Bachata", 110), ("Bachata", 112)}
+# Everything the builder made. R&D only: the datasets are research releases.
+FIRST = None
 MANIFEST = pathlib.Path("/Users/abduradi/Documents/dancesage/dancesage-research/rnd/sage_out/manifest.json")
 
 
@@ -79,13 +74,14 @@ def post(base):
     have = {v["title"]: v["id"] for v in me.get("videos", [])}
     series = {s["name"]: s for s in _call(base, token, "GET", "/v1/series")["series"]}
     manifest = json.loads(MANIFEST.read_text())
-    for dance in ("Salsa", "Bachata"):
+    dances = sorted({m["dance"] for m in manifest}, key=["Salsa", "Bachata", "West Coast Swing", "Ballroom"].index)
+    for dance in dances:
         name = f"{dance} classes"
         if name not in series:
             series[name] = _call(base, token, "POST", "/v1/series", {"name": name})
             print("series", name)
-    for item in sorted(manifest, key=lambda m: (m["dance"], m["num"])):
-        if (item["dance"], item["num"]) not in FIRST:
+    for item in sorted(manifest, key=lambda m: (dances.index(m["dance"]), m["num"])):
+        if FIRST is not None and (item["dance"], item["num"]) not in FIRST:
             continue
         sc = json.loads(pathlib.Path(item["file"]).read_text())
         if sc["title"] in have:

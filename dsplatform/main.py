@@ -72,6 +72,9 @@ def _migrate_grant_offers():
             if vcols and "mirrored" not in vcols:
                 conn.execute(text("ALTER TABLE videos ADD COLUMN mirrored INTEGER DEFAULT 0"))
                 print("videos: added mirrored", flush=True)
+            if "thumb_key" not in vcols:
+                conn.execute(text("ALTER TABLE videos ADD COLUMN thumb_key VARCHAR(200) DEFAULT ''"))
+                print("videos: added thumb_key", flush=True)
     except Exception as e:
         print(f"grant offers migration skipped: {e}", flush=True)
 
@@ -382,6 +385,19 @@ async def set_avatar(image: UploadFile = File(...), u: User = Depends(current_us
     return {"avatar": f"/avatar/{u.handle}.jpg"}
 
 
+@app.get("/thumb/{video_id}.jpg")
+def thumb(video_id: int, u: User | None = Depends(optional_user), db: Session = Depends(get_db)):
+    """The post's still. Same rule as the video itself: only who may view it."""
+    v = db.get(Video, video_id)
+    if not v or not v.thumb_key or not _may_view(v, u, db):
+        raise HTTPException(404, "No still")
+    try:
+        data = get_storage().thumb_bytes(v.thumb_key)
+    except Exception:
+        raise HTTPException(404, "No still")
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
+
+
 @app.get("/avatar/{handle}.jpg")
 def avatar(handle: str, db: Session = Depends(get_db)):
     """A profile photo, or 404 so the page falls back to initials."""
@@ -480,10 +496,20 @@ async def upload(
                 pass
         st.put_pose(f"{stem}-2d", payload)
         pose2d_key = f"{stem}-2d"
-    video_key = ""
+    video_key = thumb_key = ""
     if video is not None:
-        st.put_video(stem.replace("/", "-"), await video.read())
+        data = await video.read()
+        st.put_video(stem.replace("/", "-"), data)
         video_key = stem.replace("/", "-")
+        # A still with the skeleton on it, for every wall this post appears on.
+        try:
+            from .thumbs import make_thumb
+            jpg = make_thumb(data, p2 if pose2d else None)
+            if jpg:
+                st.put_thumb(video_key, jpg)
+                thumb_key = video_key
+        except Exception as e:  # a missing still is a blemish, not a failed post
+            print(f"thumb failed for {video_key}: {e}", flush=True)
 
     # Only a video the poster can see may be answered; otherwise the id is noise.
     if reply_to is not None and not _may_view(db.get(Video, reply_to), u, db):
@@ -496,7 +522,7 @@ async def upload(
         if not db.execute(select(Lesson).where(Lesson.student_id == u.id, Lesson.video_id == reply_to)).scalars().first():
             db.add(Lesson(student_id=u.id, video_id=reply_to))
     v = Video(user_id=u.id, title=title, note=note, style=style, level=level,
-              pose_key=f"{stem}-3d", pose2d_key=pose2d_key, video_key=video_key,
+              pose_key=f"{stem}-3d", pose2d_key=pose2d_key, video_key=video_key, thumb_key=thumb_key,
               dancers=len(p3["j"]), frames=frames, fps=int(fps),
               visibility=visibility, reply_to=reply_to, mirrored=1 if mirrored else 0)
     db.add(v); db.commit(); db.refresh(v)
@@ -554,6 +580,7 @@ def me(u: User = Depends(current_user)):
                         "frames": v.frames, "has_video": v.has_video,
                         "pose_key": v.pose_key, "pose2d_key": v.pose2d_key,
                         "video_key": v.video_key, "fps": int(v.fps or 30),
+                        "thumb": f"/thumb/{v.id}.jpg" if v.thumb_key else "",
                         "created_at": v.created_at.isoformat(),
                         "reply_to": v.reply_to, "mirrored": bool(v.mirrored)}
                        # Newest first — the same order the web page shows. Attempts
@@ -644,6 +671,7 @@ def _card(v: Video) -> dict:
             "has_video": v.has_video, "dancers": v.dancers,
             "pose_key": v.pose_key, "pose2d_key": v.pose2d_key,
             "video_key": v.video_key, "note": v.note, "reply_to": v.reply_to,
+            "thumb": f"/thumb/{v.id}.jpg" if v.thumb_key else "",
             "mirrored": bool(v.mirrored),
             "by": {"handle": v.user.handle, "display_name": v.user.display_name,
                    "avatar": f"/avatar/{v.user.handle}.jpg" if v.user.avatar_key else ""}}
@@ -794,7 +822,7 @@ def _erase_video(st, db: Session, v: Video) -> None:
                 pass          # already gone, or a bad key; the row still goes
     if v.video_key:
         try:
-            st.delete(video=v.video_key)
+            st.delete(video=v.video_key, thumb=v.thumb_key)
         except Exception:
             pass
     db.execute(delete(Grant).where(Grant.video_id == v.id))

@@ -63,7 +63,7 @@
   <div class="grid">
     {% for v in s.videos %}
     <div class="card" data-in-series="{{ s.id }}">
-      <a href="/v/{{ v.id }}"><canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas></a>
+      <a href="/v/{{ v.id }}">{% if v.thumb_key %}<img class="still" src="/thumb/{{ v.id }}.jpg" alt="" loading="lazy">{% else %}<canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas>{% endif %}</a>
       <div class="meta">
         <div class="t">{{ v.title }}</div>
         <div class="s">{{ (v.frames // v.fps) if v.fps else 0 }}s{% if v.has_video %} &middot; video{% endif %}
@@ -78,7 +78,7 @@
 <div class="grid">
   {% for v in videos %}
   <div class="card">
-    <a href="/v/{{ v.id }}"><canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas></a>
+    <a href="/v/{{ v.id }}">{% if v.thumb_key %}<img class="still" src="/thumb/{{ v.id }}.jpg" alt="" loading="lazy">{% else %}<canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas>{% endif %}</a>
     <div class="meta">
       <div class="t">{{ v.title }}</div>
       <div class="s">{{ v.seconds }}s{% if v.has_video %} &middot; video{% endif %}</div>
@@ -111,7 +111,7 @@
 <div class="grid">
   {% for who in shared %}{% for v in who.videos %}
   <div class="card" data-grant="{{ v.grant_id }}">
-    <a href="/v/{{ v.id }}"><canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas></a>
+    <a href="/v/{{ v.id }}">{% if v.thumb_key %}<img class="still" src="/thumb/{{ v.id }}.jpg" alt="" loading="lazy">{% else %}<canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas>{% endif %}</a>
     <div class="meta">
       <div class="t">{{ v.title }}</div>
       <div class="s">from <a href="/@{{ who.handle }}" style="color:var(--teal)">{{ who.display_name }}</a>{% if v.series %} &middot; series “{{ v.series.name }}”{% endif %}

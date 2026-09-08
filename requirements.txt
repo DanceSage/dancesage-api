@@ -8,3 +8,4 @@ python-multipart>=0.0.9
 pyjwt[crypto]>=2.8
 cryptography>=42.0
 boto3>=1.34
+Pillow>=10

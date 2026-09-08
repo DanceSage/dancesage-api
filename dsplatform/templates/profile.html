@@ -27,7 +27,7 @@
 </div>
 {% macro vcard(v) %}
   <a class="card" href="/v/{{ v.id }}">
-    <canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas>
+    {% if v.thumb_key %}<img class="still" src="/thumb/{{ v.id }}.jpg" alt="" loading="lazy">{% else %}<canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas>{% endif %}
     <div class="meta">
       <div class="t">{{ v.title }}</div>
       <div class="s">{{ v.level }} &middot; {{ v.seconds }}s{% if v.has_video %} &middot; video{% endif %}{% if v.dancers > 1 %} &middot; partner{% endif %}</div>
@@ -74,7 +74,7 @@
 <div class="grid">
   {% for x in passed_on %}
   <a class="card" href="/v/{{ x.video.id }}">
-    <canvas data-pose="/pose/{{ x.video.pose_key }}.json"></canvas>
+    {% if x.video.thumb_key %}<img class="still" src="/thumb/{{ x.video.id }}.jpg" alt="" loading="lazy">{% else %}<canvas data-pose="/pose/{{ x.video.pose_key }}.json"></canvas>{% endif %}
     <div class="meta">
       <div class="t">{{ x.video.title }}</div>
       <div class="s">shared by <span style="color:var(--teal)">{{ x.by.display_name }}</span> &middot; @{{ x.by.handle }} &middot; {{ x.video.seconds }}s{% if x.video.has_video %} &middot; video{% endif %}</div>

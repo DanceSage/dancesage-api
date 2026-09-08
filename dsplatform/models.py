@@ -45,6 +45,7 @@ class Video(Base):
     pose_key: Mapped[str] = mapped_column(String(200))            # 3D track, skeleton view
     pose2d_key: Mapped[str] = mapped_column(String(200), default="")  # 2D track, overlays video
     video_key: Mapped[str] = mapped_column(String(200), default="")   # empty = skeleton only
+    thumb_key: Mapped[str] = mapped_column(String(200), default="")   # a still of the video, skeleton on it
     dancers: Mapped[int] = mapped_column(Integer, default=1)
     # An attempt at someone's video says which one — that is what files it
     # under the lesson on a group's wall.

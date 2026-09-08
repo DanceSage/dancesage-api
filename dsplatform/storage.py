@@ -69,7 +69,11 @@ class Storage(ABC):
     @abstractmethod
     def avatar_bytes(self, key: str) -> bytes: ...
     @abstractmethod
-    def delete(self, *, pose: str = "", video: str = "", avatar: str = "") -> None:
+    def put_thumb(self, key: str, data: bytes) -> str: ...
+    @abstractmethod
+    def thumb_bytes(self, key: str) -> bytes: ...
+    @abstractmethod
+    def delete(self, *, pose: str = "", video: str = "", avatar: str = "", thumb: str = "") -> None:
         """Remove an object. Missing is not an error — deletion must be safe to
         retry, and a half-finished delete must be finishable."""
 
@@ -123,10 +127,23 @@ class LocalStorage(Storage):
             raise FileNotFoundError(key)
         return p.read_bytes()
 
-    def delete(self, *, pose: str = "", video: str = "", avatar: str = "") -> None:
+    def put_thumb(self, key: str, data: bytes) -> str:
+        p = self.root / "thumb" / f"{key}.jpg"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(data)
+        return key
+
+    def thumb_bytes(self, key: str) -> bytes:
+        p = self.root / "thumb" / f"{key}.jpg"
+        if not p.exists():
+            raise FileNotFoundError(key)
+        return p.read_bytes()
+
+    def delete(self, *, pose: str = "", video: str = "", avatar: str = "", thumb: str = "") -> None:
         for path in (self._path(pose) if pose else None,
                      self.video_path(video) if video else None,
-                     (self.root / "avatar" / f"{avatar}.jpg") if avatar else None):
+                     (self.root / "avatar" / f"{avatar}.jpg") if avatar else None,
+                     (self.root / "thumb" / f"{thumb}.jpg") if thumb else None):
             if path is not None:
                 path.unlink(missing_ok=True)
 
@@ -206,7 +223,15 @@ class R2Storage(Storage):
     def avatar_bytes(self, key: str) -> bytes:
         return self._get(f"{self.prefix}avatar/{key}.jpg")
 
-    def delete(self, *, pose: str = "", video: str = "", avatar: str = "") -> None:
+    def put_thumb(self, key: str, data: bytes) -> str:
+        self.s3.put_object(Bucket=self.bucket, Key=f"{self.prefix}thumb/{key}.jpg",
+                           Body=data, ContentType="image/jpeg")
+        return key
+
+    def thumb_bytes(self, key: str) -> bytes:
+        return self._get(f"{self.prefix}thumb/{key}.jpg")
+
+    def delete(self, *, pose: str = "", video: str = "", avatar: str = "", thumb: str = "") -> None:
         keys = []
         if pose:
             keys.append(f"{self.prefix}pose/{pose}.json")
@@ -214,6 +239,8 @@ class R2Storage(Storage):
             keys.append(f"{self.prefix}video/{video}.mov")
         if avatar:
             keys.append(f"{self.prefix}avatar/{avatar}.jpg")
+        if thumb:
+            keys.append(f"{self.prefix}thumb/{thumb}.jpg")
         for k in keys:
             # R2 returns success for a key that is already gone, which is what we want.
             self.s3.delete_object(Bucket=self.bucket, Key=k)
