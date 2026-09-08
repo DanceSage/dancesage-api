@@ -232,6 +232,28 @@ def profile(handle: str, request: Request, me: User | None = Depends(optional_us
                                        "has_access": shared})
 
 
+@app.get("/v1/dancers/{handle}")
+def dancer(handle: str, me: User | None = Depends(optional_user), db: Session = Depends(get_db)):
+    """A dancer's public page as the app draws it: who they are, their series
+    as folders of the videos the reader may see, and the loose posts."""
+    u = db.execute(select(User).where(User.handle == handle)).scalar_one_or_none()
+    if not u:
+        raise HTTPException(404, f"Nobody here is called @{handle}")
+    vids = sorted([v for v in u.videos if v.reply_to is None and _may_view(v, me, db)],
+                  key=lambda v: v.created_at, reverse=True)
+    folders, filed = [], set()
+    for s in db.execute(select(Series).where(Series.owner_id == u.id)
+                        .order_by(Series.created_at)).scalars().all():
+        inside = [i.video for i in s.items if i.video in vids]
+        if inside:
+            folders.append({"id": s.id, "name": s.name, "videos": [_card(v) for v in inside]})
+            filed.update(v.id for v in inside)
+    return {"handle": u.handle, "display_name": u.display_name, "bio": u.bio, "city": u.city,
+            "styles": u.styles, "levels": u.levels,
+            "avatar": f"/avatar/{u.handle}.jpg" if u.avatar_key else "",
+            "folders": folders, "videos": [_card(v) for v in vids if v.id not in filed]}
+
+
 @app.get("/v/{video_id}", response_class=HTMLResponse)
 def video(video_id: int, request: Request, me: User | None = Depends(optional_user),
           db: Session = Depends(get_db)):
