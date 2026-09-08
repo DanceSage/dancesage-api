@@ -8,3 +8,5 @@ api/
 src/
 tests/
 *.pt
+.venv/
+.pytest_cache/
