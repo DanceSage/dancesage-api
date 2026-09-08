@@ -34,21 +34,39 @@
     </div>
   </a>
 {% endmacro %}
+{% set level_order = ['Beginner', 'Intermediate', 'Advanced', 'All levels'] %}
 {% for f in folders %}
-<div class="folder">
-  <div class="folder-head"><span>&#128193;</span> {{ f.name }} <span class="cnt">series &middot; {{ f.videos|length }} video{{ '' if f.videos|length == 1 else 's' }}</span></div>
-  <div class="grid">{% for v in f.videos %}{{ vcard(v) }}{% endfor %}</div>
-</div>
+<details class="series">
+  <summary>
+    <span class="ttl">{{ f.name }}</span>
+    <span class="cnt">{{ f.videos|length }} class{{ '' if f.videos|length == 1 else 'es' }}
+      &middot; {% for lv in level_order if f.videos|selectattr('level','equalto',lv)|list %}{{ lv }}{{ '' if loop.last else ', ' }}{% endfor %}</span>
+  </summary>
+  {% for lv in level_order %}{% set inside = f.videos|selectattr('level','equalto',lv)|sort(attribute='title') %}{% if inside %}
+  <div class="level-head">{{ lv }}</div>
+  <div class="grid">{% for v in inside %}{{ vcard(v) }}{% endfor %}</div>
+  {% endif %}{% endfor %}
+  {% set other = f.videos|rejectattr('level','in',level_order)|sort(attribute='title') %}{% if other %}
+  <div class="level-head">More</div>
+  <div class="grid">{% for v in other %}{{ vcard(v) }}{% endfor %}</div>
+  {% endif %}
+</details>
 {% endfor %}
-{% if loose and folders %}<div class="folder-head" style="margin-top:18px">Single videos</div>{% endif %}
+{% if loose and folders %}<div class="level-head" style="margin-top:22px">Single videos</div>{% endif %}
 <div class="grid">
   {% for v in loose %}{{ vcard(v) }}{% endfor %}
 </div>
 {% if not videos %}<p class="sub">Nothing published yet.</p>{% endif %}
 <style>
-  .folder{margin-bottom:22px}
-  .folder-head{font-weight:700;margin:8px 0 10px;display:flex;align-items:center;gap:8px}
-  .folder-head .cnt{font-weight:400;color:var(--muted);font-size:.78rem}
+  .series{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:0 16px;margin:0 0 14px}
+  .series summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:14px 0}
+  .series summary::-webkit-details-marker{display:none}
+  .series summary::before{content:"▸";color:var(--gold);font-size:.9rem;transition:transform .15s}
+  .series[open] summary::before{transform:rotate(90deg)}
+  .series .ttl{font-weight:600;flex:1;min-width:0}
+  .series .cnt{color:var(--muted);font-size:.78rem}
+  .level-head{font-weight:700;font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:10px 0 8px}
+  .series .grid{margin-bottom:14px}
 </style>
 {% if passed_on %}
 <h2 style="font-size:1.05rem;margin:34px 0 4px">Shared with {{ u.display_name }}</h2>
