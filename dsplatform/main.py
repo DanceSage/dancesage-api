@@ -1147,8 +1147,16 @@ def _my_classes(u: User, db: Session) -> list[dict]:
                                                Grant.accepted_at.is_not(None))).scalars().all()
     for g in in_grants:
         a = g.video
-        if a is None or a.reply_to is None or a.reply_to not in classes:
+        if a is None or a.reply_to is None:
             continue
+        if a.reply_to not in classes:
+            # A TA passed my video on and routed the attempts to me: still my
+            # class, even though I never shared it myself.
+            src = db.get(Video, a.reply_to)
+            if src is None or src.user_id != u.id:
+                continue
+            classes[src.id] = {"lesson": _card(src), "students": [], "attempts": [],
+                               "series": None, "groups": []}
         classes[a.reply_to]["attempts"].append(dict(_card(a), sent_at=g.created_at.isoformat()))
     for c in classes.values():
         c["attempts"].sort(key=lambda x: x["id"], reverse=True)
