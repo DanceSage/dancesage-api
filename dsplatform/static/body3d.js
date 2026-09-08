@@ -6,7 +6,7 @@ window.mountBody3D = async function (root, files, opts = {}) {
   root.innerHTML = `
     <canvas class="b3-stage"></canvas>
     <div class="b3-status">Loading the bodies…</div>
-    <div class="b3-views"><button data-yaw="0">Front</button><button data-yaw="90">Side</button><button data-yaw="180">Back</button><button data-yaw="270">Other side</button></div>
+    <div class="b3-views"><button data-yaw="0">Front</button><button data-yaw="90">Side</button><button data-yaw="180">Back</button><button data-yaw="270">Other side</button><button class="b3-mode" title="Skeleton or body">Body</button></div>
     <div class="b3-bar">
       <button class="b3-play" title="Pause">&#10074;&#10074;</button>
       <input class="b3-scrub" type="range" min="0" max="1" step="1" value="0">
@@ -25,6 +25,12 @@ window.mountBody3D = async function (root, files, opts = {}) {
   const fill = new THREE.DirectionalLight(0xffffff, 0.35); fill.position.set(-2, 1, -1.5); scene.add(fill);
   let pos = 0, frame = -1, playing = true, rate = 1, last = performance.now();
   let yaw = 0, pitch = 0.1, zoom = 1, meshes = [], c = null;
+  // The skeleton: the joints file alone, lines and dots, no surface. What the score uses.
+  let skeleton = true, joints = null, bones = null, sk = [];
+  const BONES = {
+    coco: [[5,6],[5,7],[7,9],[6,8],[8,10],[5,11],[6,12],[11,12],[11,13],[13,15],[12,14],[14,16],[0,5],[0,6]],
+    smplx: [[0,1],[0,2],[1,4],[2,5],[4,7],[5,8],[7,10],[8,11],[0,3],[3,6],[6,9],[9,12],[12,15],[9,13],[9,14],[13,16],[14,17],[16,18],[17,19],[18,20],[19,21]]
+  };
 
   function resize() {
     const w = root.clientWidth, h = root.clientHeight;
@@ -44,14 +50,47 @@ window.mountBody3D = async function (root, files, opts = {}) {
     const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: COLOURS[p % 2], roughness: 0.65, metalness: 0.05 }));
     rig.add(mesh); meshes.push(mesh);
   }
+  try {
+    joints = await (await fetch(files.joints, { credentials: 'same-origin' })).json();
+    const first = joints.people.flat().find(f => f && f.length);
+    bones = first && first.length >= 70 ? BONES.coco : BONES.smplx;      // MHR (COCO first) or SMPL-X
+    for (let p = 0; p < joints.people.length; p++) {
+      const grp = new THREE.Group(); rig.add(grp);
+      const mat = new THREE.MeshStandardMaterial({ color: COLOURS[p % 2], roughness: 0.5 });
+      const dots = bones.flat().filter((v, i, a) => a.indexOf(v) === i).map(j => {
+        const d = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), mat); d.userData.j = j; grp.add(d); return d; });
+      const limbs = bones.map(() => { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 1, 8), mat); grp.add(l); return l; });
+      sk.push({ grp, dots, limbs });
+    }
+  } catch (e) { joints = null; skeleton = false; }
   const lo = meta.lo, hi = meta.hi; c.centre = [(lo[0]+hi[0])/2, (lo[1]+hi[1])/2, (lo[2]+hi[2])/2];
   c.size = Math.max(hi[1]-lo[1], (hi[0]-lo[0]) * root.clientHeight / Math.max(1, root.clientWidth));
   const grid = new THREE.GridHelper(4, 16, 0x2A2F37, 0x1E232A); grid.position.y = (lo[1]-c.centre[1]) - 0.02; rig.add(grid);
   $('.b3-scrub').max = meta.frames - 1; $('.b3-status').hidden = true;
 
+  function setSkeleton() {
+    const [cx, cy, cz] = c.centre, up = new THREE.Vector3(0, 1, 0);
+    for (let p = 0; p < sk.length; p++) {
+      const f = joints.people[p][frame], s = sk[p];
+      s.grp.visible = skeleton && !!(f && f.length);
+      if (!s.grp.visible) continue;
+      // joints are in the camera frame (y down, z away); the meshes were flipped to y up, so flip the same way
+      const P = j => new THREE.Vector3(f[j][0] - cx, -f[j][1] - cy, -f[j][2] - cz);
+      s.dots.forEach(d => d.position.copy(P(d.userData.j)));
+      s.limbs.forEach((l, i) => {
+        const a = P(bones[i][0]), b = P(bones[i][1]), d = b.clone().sub(a), len = d.length();
+        l.position.copy(a).add(d.multiplyScalar(0.5)); l.scale.set(1, Math.max(len, 1e-3), 1);
+        l.quaternion.setFromUnitVectors(up, d.normalize());
+      });
+    }
+    meshes.forEach(m => m.visible = !skeleton);
+  }
+
   function setFrame() {
     const m = c.m, n = m.verts * 3, [cx, cy, cz] = c.centre;
+    if (joints) setSkeleton();
     for (let p = 0; p < m.people; p++) {
+      if (skeleton) continue;
       const dst = meshes[p].geometry.attributes.position.array, off = (p * m.frames + frame) * n;
       for (let i = 0; i < n; i += 3) {
         dst[i]   = m.lo[0] + c.verts[off+i]   / 65535 * (m.hi[0]-m.lo[0]) - cx;
@@ -74,7 +113,11 @@ window.mountBody3D = async function (root, files, opts = {}) {
     renderer.render(scene, camera);
     last = now; requestAnimationFrame(tick);
   }
-  $$('.b3-views button').forEach(b => b.onclick = () => { yaw = b.dataset.yaw * Math.PI / 180; });
+  $$('.b3-views button[data-yaw]').forEach(b => b.onclick = () => { yaw = b.dataset.yaw * Math.PI / 180; });
+  const modeBtn = $('.b3-mode'); modeBtn.hidden = !joints;
+  const showMode = () => { modeBtn.textContent = skeleton ? 'Body' : 'Skeleton'; };
+  modeBtn.onclick = () => { skeleton = !skeleton; showMode(); frame = -1; };
+  if (!joints) skeleton = false; showMode();
   $('.b3-play').onclick = e => { playing = !playing; e.currentTarget.innerHTML = playing ? '&#10074;&#10074;' : '&#9654;'; };
   $('.b3-scrub').oninput = e => { playing = false; $('.b3-play').innerHTML = '&#9654;'; pos = +e.target.value; frame = -1; };
   $('.b3-speed').oninput = e => { rate = +e.target.value; };
