@@ -75,6 +75,10 @@ def _migrate_grant_offers():
             if "thumb_key" not in vcols:
                 conn.execute(text("ALTER TABLE videos ADD COLUMN thumb_key VARCHAR(200) DEFAULT ''"))
                 print("videos: added thumb_key", flush=True)
+            ucols = [row[1] for row in conn.execute(text("PRAGMA table_info(users)"))]
+            if "plan" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN plan VARCHAR(12) DEFAULT 'free'"))
+                print("users: added plan", flush=True)
     except Exception as e:
         print(f"grant offers migration skipped: {e}", flush=True)
 
@@ -161,6 +165,8 @@ def _nav_user(request: Request) -> dict:
 templates = Jinja2Templates(directory=str(HERE / "templates"),
                             context_processors=[_nav_user])
 Base.metadata.create_all(engine)
+from .refine import router as refine_router, body_summary   # noqa: E402  (needs the app's helpers)
+app.include_router(refine_router)
 
 
 @app.get("/health")
@@ -585,6 +591,7 @@ def me(u: User = Depends(current_user)):
             "city": u.city, "styles": u.styles, "levels": u.levels,
             "takes_students": bool(u.takes_students),
             "avatar": f"/avatar/{u.handle}.jpg" if u.avatar_key else "",
+            "plan": u.plan,
             "videos": [{"id": v.id, "title": v.title, "note": v.note,
                         "style": v.style, "level": v.level,
                         "visibility": v.visibility,
@@ -592,6 +599,7 @@ def me(u: User = Depends(current_user)):
                         "pose_key": v.pose_key, "pose2d_key": v.pose2d_key,
                         "video_key": v.video_key, "fps": int(v.fps or 30),
                         "thumb": f"/thumb/{v.id}.jpg" if v.thumb_key else "",
+                        "body": _body_of(v),
                         "created_at": v.created_at.isoformat(),
                         "reply_to": v.reply_to, "mirrored": bool(v.mirrored)}
                        # Newest first — the same order the web page shows. Attempts
@@ -675,6 +683,13 @@ def my_page(request: Request, u: User | None = Depends(optional_user),
 
 # ── browsing ───────────────────────────────────────────────────────────────
 
+def _body_of(v: Video) -> dict:
+    """Which refined bodies exist for a post, by tier — read through the video's session."""
+    from sqlalchemy.orm import object_session
+    db = object_session(v)
+    return body_summary(v, db) if db is not None else {}
+
+
 def _card(v: Video) -> dict:
     """One video as the app draws it. Credit travels with the clip, always."""
     return {"id": v.id, "title": v.title, "style": v.style, "level": v.level,
@@ -683,6 +698,7 @@ def _card(v: Video) -> dict:
             "pose_key": v.pose_key, "pose2d_key": v.pose2d_key,
             "video_key": v.video_key, "note": v.note, "reply_to": v.reply_to,
             "thumb": f"/thumb/{v.id}.jpg" if v.thumb_key else "",
+            "body": _body_of(v),
             "mirrored": bool(v.mirrored),
             "by": {"handle": v.user.handle, "display_name": v.user.display_name,
                    "avatar": f"/avatar/{v.user.handle}.jpg" if v.user.avatar_key else ""}}

@@ -76,6 +76,13 @@ class Storage(ABC):
     def thumb_url(self, key: str) -> str:
         """Where a client fetches the still itself — R2 in the cloud, never this process."""
     @abstractmethod
+    def put_body(self, track_id: int, name: str, data: bytes, content_type: str) -> str:
+        """One file of a refined body — joints.json, mesh.bin, meta.json, turntable.mp4."""
+    @abstractmethod
+    def body_bytes(self, track_id: int, name: str) -> bytes: ...
+    @abstractmethod
+    def body_url(self, track_id: int, name: str) -> str: ...
+    @abstractmethod
     def delete(self, *, pose: str = "", video: str = "", avatar: str = "", thumb: str = "") -> None:
         """Remove an object. Missing is not an error — deletion must be safe to
         retry, and a half-finished delete must be finishable."""
@@ -144,6 +151,21 @@ class LocalStorage(Storage):
 
     def thumb_url(self, key: str) -> str:
         return f"/thumb/{key}.jpg"
+
+    def put_body(self, track_id: int, name: str, data: bytes, content_type: str) -> str:
+        p = self.root / "body" / str(track_id) / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(data)
+        return f"{track_id}/{name}"
+
+    def body_bytes(self, track_id: int, name: str) -> bytes:
+        p = self.root / "body" / str(track_id) / name
+        if not p.exists():
+            raise FileNotFoundError(name)
+        return p.read_bytes()
+
+    def body_url(self, track_id: int, name: str) -> str:
+        return f"/body/{track_id}/{name}"
 
     def delete(self, *, pose: str = "", video: str = "", avatar: str = "", thumb: str = "") -> None:
         for path in (self._path(pose) if pose else None,
@@ -239,6 +261,17 @@ class R2Storage(Storage):
 
     def thumb_url(self, key: str) -> str:
         return self._url(f"{self.prefix}thumb/{key}.jpg")
+
+    def put_body(self, track_id: int, name: str, data: bytes, content_type: str) -> str:
+        self.s3.put_object(Bucket=self.bucket, Key=f"{self.prefix}body/{track_id}/{name}",
+                           Body=data, ContentType=content_type)
+        return f"{track_id}/{name}"
+
+    def body_bytes(self, track_id: int, name: str) -> bytes:
+        return self._get(f"{self.prefix}body/{track_id}/{name}")
+
+    def body_url(self, track_id: int, name: str) -> str:
+        return self._url(f"{self.prefix}body/{track_id}/{name}")
 
     def delete(self, *, pose: str = "", video: str = "", avatar: str = "", thumb: str = "") -> None:
         keys = []

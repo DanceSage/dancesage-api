@@ -24,6 +24,8 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(160), default="")
     # Empty means no photo — the page falls back to initials rather than a stock face.
     avatar_key: Mapped[str] = mapped_column(String(200), default="")        # often a private relay
+    # free | pro. Pro unlocks the refined and 3D bodies. Set by hand until payments exist.
+    plan: Mapped[str] = mapped_column(String(12), default="free")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     videos: Mapped[list["Video"]] = relationship(back_populates="user",
                                                  cascade="all, delete-orphan")
@@ -221,4 +223,35 @@ class Lesson(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
     student: Mapped[User] = relationship(foreign_keys=[student_id])
+    video: Mapped[Video] = relationship(foreign_keys=[video_id])
+
+
+class BodyTrack(Base):
+    """A body for a video, made by a worker after the fact — the stages above the
+    phone's live skeleton. One row per video per tier; the newest done row is the
+    one the players use.
+
+      tier   refined  — both dancers as bodies, minutes, cents (engine: Multi-HMR)
+             3d       — the full tracked body, turnable, the paid stage (SAM-Body4D)
+      status queued → running → done | failed
+    """
+    __tablename__ = "body_tracks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    video_id: Mapped[int] = mapped_column(ForeignKey("videos.id"), index=True)
+    tier: Mapped[str] = mapped_column(String(12))
+    status: Mapped[str] = mapped_column(String(12), default="queued", index=True)
+    engine: Mapped[str] = mapped_column(String(40), default="")
+    fps: Mapped[float] = mapped_column(Float, default=0)           # frames per second the worker fitted
+    dancers: Mapped[int] = mapped_column(Integer, default=0)
+    frames: Mapped[int] = mapped_column(Integer, default=0)
+    # storage keys under body/<id>/: joints.json, mesh.bin, meta.json, turntable.mp4
+    has_mesh: Mapped[int] = mapped_column(Integer, default=0)
+    has_turntable: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str] = mapped_column(Text, default="")
+    worker: Mapped[str] = mapped_column(String(80), default="")
+    seconds: Mapped[float] = mapped_column(Float, default=0)       # worker time, for the bill
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    started_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+
     video: Mapped[Video] = relationship(foreign_keys=[video_id])
