@@ -1129,7 +1129,9 @@ def _my_classes(u: User, db: Session) -> list[dict]:
     classes: dict[int, dict] = {}
     for g in out_grants:
         v = g.video
-        if v is None or v.user_id != u.id or v.reply_to is not None:
+        # Mine, or someone's public video I passed on as a TA: either way the
+        # attempts come to me, so it is a class of mine.
+        if v is None or v.reply_to is not None:
             continue
         sg = db.get(SeriesGrant, g.series_grant_id) if g.series_grant_id else None
         entry = classes.setdefault(v.id, {"lesson": _card(v), "students": [], "attempts": [],

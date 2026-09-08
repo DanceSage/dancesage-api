@@ -46,6 +46,12 @@ def _inbox_titles(token: str) -> list[str]:
     return [v["title"] for who in _inbox(token)["from"] for v in who["videos"]]
 
 
+def _class_attempt_titles(token: str) -> list[str]:
+    """Attempts a teacher has been sent, from I'm teaching — never the inbox."""
+    classes = client.get("/v1/classes", headers={"Authorization": f"Bearer {token}"}).json()["classes"]
+    return sorted(a["title"] for c in classes for a in c.get("attempts", []))
+
+
 def _offer_titles(token: str) -> list[str]:
     return [v["title"] for who in _inbox(token)["offers"] for v in who["videos"]]
 
@@ -276,7 +282,9 @@ def test_a_group_has_a_wall_and_members_share_back():
                                               "reply_to": lesson}, headers=hdr(maya)).json()["id"]
     r = client.post(f"/v1/groups/{gid}/share", json={"video_id": attempt}, headers=hdr(maya))
     assert r.status_code == 200, r.text
-    assert "Enchufla — my attempt" in _inbox_titles(teacher)
+    # An attempt is never an inbox item: it lives under the lesson, in I'm teaching.
+    assert "Enchufla — my attempt" not in _inbox_titles(teacher)
+    assert "Enchufla — my attempt" in _class_attempt_titles(teacher)
     assert _offer_titles(teacher) == []
 
     wall = client.get(f"/v1/groups/{gid}/wall", headers=hdr(teacher)).json()
@@ -484,7 +492,8 @@ def test_attempts_live_under_my_lessons_not_on_the_profile():
 
     # Sent: the teacher has it at once, no offer; the page says so.
     assert client.post(f"/v1/lessons/{attempt}/send", headers=hdr(maya)).status_code == 200
-    assert _inbox_titles(teacher) == ["Basic — try 1"] and _offer_titles(teacher) == []
+    assert _inbox_titles(teacher) == [] and _offer_titles(teacher) == []
+    assert _class_attempt_titles(teacher) == ["Basic — try 1"]
     assert client.get("/v1/lessons", headers=hdr(maya)).json()["lessons"][0]["attempts"][0]["sent"] is True
     assert "sent to Lteach" in client.get("/lessons", cookies={"ds_session": maya}).text
     # Nobody else's attempt can be sent by her.
@@ -504,7 +513,8 @@ def test_a_ta_chooses_where_attempts_go():
     a1 = client.post("/v1/videos", data={"title": "try 1", "pose3d": pose, "pose2d": pose, "reply_to": video}, headers=hdr(zoe)).json()["id"]
     assert client.get("/v1/lessons", headers=hdr(zoe)).json()["lessons"][0]["teacher"]["handle"] == "ta"
     assert client.post(f"/v1/lessons/{a1}/send", headers=hdr(zoe)).json()["to"] == "ta"
-    assert _inbox_titles(ta) == ["try 1"] and _inbox_titles(boss) == []
+    assert _inbox_titles(ta) == [] and _inbox_titles(boss) == []
+    assert _class_attempt_titles(ta) == ["try 1"] and _class_attempt_titles(boss) == []
 
     # The TA re-shares choosing the owner; now attempts go to the boss.
     client.delete(f"/v1/grants/{_inbox(zoe)['from'][0]['videos'][0]['grant_id']}", headers=hdr(ta))
@@ -544,7 +554,7 @@ def test_a_lesson_exists_from_add_to_lessons_and_can_be_deleted_whole():
     ids = [client.post("/v1/videos", data={"title": f"try {i}", "pose3d": pose, "pose2d": pose, "reply_to": basic},
                        headers=hdr(maya)).json()["id"] for i in (1, 2)]
     client.post(f"/v1/lessons/{ids[0]}/send", headers=hdr(maya))
-    assert _inbox_titles(teacher) == ["try 1"]
+    assert _inbox_titles(teacher) == [] and _class_attempt_titles(teacher) == ["try 1"]
     assert client.delete(f"/v1/lessons/attempts/{ids[0]}", headers=hdr(maya)).status_code == 200
     assert _inbox_titles(teacher) == []
     assert [a["title"] for a in client.get("/v1/lessons", headers=hdr(maya)).json()["lessons"][0]["attempts"]] == ["try 2"]
