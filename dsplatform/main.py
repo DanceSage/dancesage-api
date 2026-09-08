@@ -119,8 +119,14 @@ async def _short_cache_for_static(request: Request, call_next):
     hard; this cannot.
     """
     response = await call_next(request)
-    if request.url.path.startswith("/static/"):
+    path = request.url.path
+    if path.startswith("/static/"):
         response.headers["Cache-Control"] = "public, max-age=300, must-revalidate"
+    elif path.startswith(("/thumb/", "/avatar/", "/video/")):
+        # Answered per viewer — a still, a face, a clip — and a 404 as much as a
+        # 200. Cached by anyone in between, one person's refusal becomes
+        # everyone's.
+        response.headers["Cache-Control"] = "private, no-store"
     return response
 
 
