@@ -15,7 +15,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 
 from .db import get_db, Base, engine, SessionLocal
-from .models import User, Video, Grant, Group, GroupMember, Series, SeriesVideo, SeriesGrant, Lesson
+from .models import BodyTrack, User, Video, Grant, Group, GroupMember, Series, SeriesVideo, SeriesGrant, Lesson
 from .storage import get_storage, LocalStorage
 from .auth import (verify_provider_token, issue_session, current_user,
                     optional_user, COOKIE, SECRET)
@@ -165,7 +165,7 @@ def _nav_user(request: Request) -> dict:
 templates = Jinja2Templates(directory=str(HERE / "templates"),
                             context_processors=[_nav_user])
 Base.metadata.create_all(engine)
-from .refine import router as refine_router, body_summary   # noqa: E402  (needs the app's helpers)
+from .refine import router as refine_router, body_summary, _files as _body_files   # noqa: E402  (needs the app's helpers)
 app.include_router(refine_router)
 
 
@@ -285,9 +285,17 @@ def video(video_id: int, request: Request, me: User | None = Depends(optional_us
     lesson = db.get(Video, v.reply_to) if v.reply_to else None
     if lesson is not None and not _may_view(lesson, me, db):
         lesson = None
+    # The refined bodies, if any: the 3D mode on the page, Refine for the owner.
+    body = body_summary(v, db)
+    done3d = next((t for t in db.execute(select(BodyTrack).where(BodyTrack.video_id == v.id, BodyTrack.status == "done",
+                                                                  BodyTrack.has_mesh == 1)
+                                         .order_by(BodyTrack.created_at.desc())).scalars().all()), None)
     return templates.TemplateResponse(request, "video.html",
                                       {"v": v, "u": v.user, "more": more,
-                                       "can_share": can_share, "lesson": lesson})
+                                       "can_share": can_share, "lesson": lesson,
+                                       "body": body, "body_track": done3d,
+                                       "body_files": _body_files(done3d) if done3d else None,
+                                       "is_owner": bool(me) and me.id == v.user_id})
 
 
 @app.get("/pose/{key:path}.json")

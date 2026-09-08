@@ -14,6 +14,18 @@
   .player canvas{display:block;background:var(--panel2);border-radius:11px;cursor:grab}
   #stage:not(.has-video) canvas{width:100%;aspect-ratio:3/4;max-height:72vh}
   .player canvas.drag{cursor:grabbing}
+  #body3d{position:absolute;inset:0;background:#0F1114}
+  #body3d .b3-stage{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+  #body3d .b3-status{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:var(--muted);font-size:.9rem}
+  #body3d .b3-views{position:absolute;left:10px;top:10px;display:flex;gap:5px}
+  #body3d .b3-views button{background:rgba(0,0,0,.55);border:1px solid var(--line);color:var(--muted);font:600 .72rem var(--font-body);padding:4px 9px;border-radius:999px;cursor:pointer}
+  #body3d .b3-bar{position:absolute;left:0;right:0;bottom:0;padding:10px 12px;background:linear-gradient(transparent,rgba(15,17,20,.92) 40%);display:flex;gap:10px;align-items:center}
+  #body3d .b3-bar button{width:34px;height:34px;border-radius:50%;border:none;background:var(--text);color:#000;font-size:14px;cursor:pointer;flex:none}
+  #body3d .b3-bar input[type=range]{flex:1;accent-color:var(--gold);min-width:0}
+  #body3d .b3-time{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.78rem;min-width:80px;text-align:right}
+  #body3d .b3-bar label{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:.78rem}
+  #body3d .b3-bar label input{width:70px;flex:none}
+  #stage:has(#body3d:not([hidden])){aspect-ratio:9/16;max-height:72vh}
   .ctl{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
   .ctl button{background:none;border:none;color:var(--text);font:600 1rem system-ui;
     padding:6px 8px;border-radius:9px;cursor:pointer;min-width:34px}
@@ -66,6 +78,7 @@
     <div class="ctl" style="margin:0 0 10px">
       {% if v.has_video %}<button class="layer on" data-layer="video"><span class="dot" style="background:#fff"></span>Video</button>{% endif %}
       <button class="layer on" data-layer="skel"><span class="dot" style="background:#3ad6b0"></span>Skeleton</button>
+      {% if body_track %}<button class="layer" data-layer="body" title="The refined 3D body — drag to turn"><span class="dot" style="background:#EC48C8"></span>3D body</button>{% endif %}
       {% if v.dancers > 1 %}{% for d in range(v.dancers) %}
       <button class="dancer" data-dancer="{{ d }}"><span class="dot" data-dancer-dot="{{ d }}"></span>Dancer {{ d + 1 }}</button>
       {% endfor %}{% endif %}
@@ -75,6 +88,7 @@
       <video id="vid" src="/video/{{ v.video_key }}.mov" playsinline muted loop></video>
       {% endif %}
       <canvas id="cv" style="{% if v.has_video %}position:absolute;inset:0;width:100%;height:100%{% endif %}"></canvas>
+      {% if body_track %}<div id="body3d" hidden></div>{% endif %}
     </div>
     {# The same row as the app: play, the scrubber, the time, speed. #}
     <div class="ctl" style="flex-wrap:nowrap">
@@ -93,7 +107,16 @@
       <span class="chip">{{ v.style }}</span><span class="chip">{{ v.level }}</span>
       <span class="chip">{{ v.seconds }}s</span>
       {% if v.dancers > 1 %}<span class="chip">partner</span>{% endif %}
+      {% for tier, b in (body or {}).items() %}<span class="chip" data-body-tier="{{ tier }}" style="{% if b.status == 'done' %}color:#EC48C8{% elif b.status == 'failed' %}color:var(--rose){% else %}color:var(--gold){% endif %}">{{ {'refined': 'Refined', '3d': '3D'}[tier] }}{% if b.status != 'done' %} · {{ {'queued': 'queued', 'running': 'refining…', 'failed': 'failed'}[b.status] }}{% endif %}</span>{% endfor %}
     </div>
+    {% if is_owner and v.has_video and body is defined %}
+    {# Refine: a body made after the fact. Refined is free while it costs cents; 3D is the paid plan. #}
+    <div class="refine" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
+      {% if not body.get('refined') or body['refined'].status == 'failed' %}<button class="grm" data-refine="refined" style="color:var(--teal)">Refine both dancers</button>{% endif %}
+      {% if not body.get('3d') or body['3d'].status == 'failed' %}<button class="grm" data-refine="3d" style="color:#EC48C8">Make it 3D{% if me.plan != 'pro' %} · paid{% endif %}</button>{% endif %}
+      <span class="refine-msg" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
+    </div>
+    {% endif %}
     {% if can_share %}
     {# Your own clip: the same control as on your page. Someone's public clip:
        pass it on. A private clip shared with you: nothing to click. #}
@@ -204,4 +227,34 @@ if (HASVID) {
   const end=()=>{drag=false;c.classList.remove('drag');};
   c.addEventListener('pointerup',end); c.addEventListener('pointercancel',end);
 }
+</script>{% endif %}
+{% if body_track %}<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script><script src="/static/body3d.js?v=1"></script><script>
+(() => {
+  // The 3D mode: the fitted body in place of video and skeleton. Mounted once, on first use.
+  const chip = document.querySelector('button.layer[data-layer="body"]'), box = document.getElementById('body3d');
+  const vid = document.getElementById('vid'), cvs = document.getElementById('cv');
+  let viewer = null;
+  chip.onclick = async () => {
+    const on = chip.classList.toggle('on'); box.hidden = !on;
+    if (vid) vid.style.visibility = on ? 'hidden' : ''; cvs.style.visibility = on ? 'hidden' : '';
+    if (on) { if (typeof sk !== 'undefined' && sk.pause) sk.pause(); if (vid) vid.pause(); }
+    if (on && !viewer) viewer = await mountBody3D(box, {{ body_files|tojson }});
+    else if (viewer) { on ? viewer.play() : viewer.pause(); }
+  };
+})();
+</script>{% endif %}
+{% if is_owner and v.has_video and body is defined %}<script>
+document.querySelectorAll('button[data-refine]').forEach(b => b.onclick = async () => {
+  const msg = document.querySelector('.refine-msg'); b.disabled = true; msg.textContent = 'Asking…';
+  const r = await fetch('/v1/videos/{{ v.id }}/refine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tier: b.dataset.refine }) });
+  if (r.status === 402) { msg.textContent = 'The 3D body is part of the paid plan.'; b.disabled = false; return; }
+  if (!r.ok) { msg.textContent = 'Could not queue that.'; b.disabled = false; return; }
+  msg.textContent = 'Queued. A few minutes — this page will refresh when it is ready.';
+  const poll = setInterval(async () => {
+    const j = await (await fetch('/v1/videos/{{ v.id }}/body')).json();
+    const s = (j.summary[b.dataset.refine] || {}).status;
+    if (s === 'done') { clearInterval(poll); location.reload(); }
+    if (s === 'failed') { clearInterval(poll); msg.textContent = 'That one failed; try again.'; b.disabled = false; }
+  }, 10000);
+});
 </script>{% endif %}{% endblock %}

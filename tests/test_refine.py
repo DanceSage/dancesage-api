@@ -102,3 +102,29 @@ def test_the_3d_tier_needs_the_paid_plan_and_refined_does_not():
     assert client.post(f"/v1/refine/{job['id']}/fail", json={"error": "out of memory"}, headers=w).status_code == 200
     assert client.get(f"/v1/videos/{vid}/body", headers=hdr(andy)).json()["summary"]["refined"]["status"] == "failed"
     assert client.post(f"/v1/videos/{vid}/refine", json={"tier": "refined"}, headers=hdr(andy)).json()["status"] == "queued"
+
+
+def test_the_video_page_and_the_viewer_page_show_the_body():
+    zoe = _user("refzoe", plan="pro")
+    vid = _post_video(zoe, "Turn")
+    w = {"X-Worker-Token": "worker-secret"}
+    job = client.post(f"/v1/videos/{vid}/refine", json={"tier": "3d"}, headers=hdr(zoe)).json()["id"]
+    # the queue is shared with earlier tests: claim until this job comes up
+    while (j := client.get("/v1/refine/next", headers=w).json()["job"]) and j["id"] != job:
+        pass
+    assert j and j["id"] == job
+    r = client.post(f"/v1/refine/{job}/result", headers=w, data={"engine": "sam-body4d", "fps": 10, "dancers": 1, "frames": 4},
+                    files={"joints": ("joints.json", b'{"people":[]}', "application/json"), "meta": ("meta.json", b"{}", "application/json"),
+                           "mesh": ("mesh.bin", b"\x00" * 8, "application/octet-stream")})
+    assert r.status_code == 200, r.text
+    page = client.get(f"/v/{vid}", cookies={"ds_session": zoe}).text
+    assert 'data-layer="body"' in page and 'id="body3d"' in page and "mountBody3D" in page
+    # the app's link: a signed token that opens the viewer without a session
+    track = client.get(f"/v1/videos/{vid}/body", headers=hdr(zoe)).json()["track"]
+    assert track["view_url"].startswith(f"/body/{job}/view?t=")
+    view = client.get(track["view_url"])
+    assert view.status_code == 200 and "mountBody3D" in view.text
+    tok = track["view_url"].split("t=")[1]
+    assert client.get(f"/body/{job}/mesh.bin?t={tok}").status_code == 200
+    assert client.get(f"/body/{job}/view").status_code == 404          # no token, no session
+    assert client.get(f"/body/{job}/view?t=bogus").status_code == 404

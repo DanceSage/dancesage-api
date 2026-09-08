@@ -14,7 +14,7 @@ import json
 import os
 import urllib.request
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -101,20 +101,59 @@ def get_body(video_id: int, tier: str = "", u: User | None = Depends(optional_us
         files["mesh"] = f"/body/{t.id}/mesh.bin"
     if t.has_turntable:
         files["turntable"] = f"/body/{t.id}/turntable.mp4"
+    import time
+    from .main import PLAYBACK_TTL
+    token = _view_token(t.id, int(time.time()) + PLAYBACK_TTL)
     return {"summary": body_summary(v, db),
             "track": {"id": t.id, "tier": t.tier, "engine": t.engine, "fps": t.fps,
-                      "dancers": t.dancers, "frames": t.frames, "files": files}}
+                      "dancers": t.dancers, "frames": t.frames, "files": files,
+                      "view_url": f"/body/{t.id}/view?t={token}" if t.has_mesh else None}}
+
+
+def _view_token(track_id: int, expires: int) -> str:
+    from .main import _playback_token
+    return _playback_token(f"body{track_id}", expires)
+
+
+def _view_ok(track_id: int, t: str) -> bool:
+    """A short-lived signed token, so the app's web view can open the page without a cookie."""
+    from .main import _playback_ok
+    return bool(t) and _playback_ok(f"body{track_id}", t)
+
+
+def _files(t: BodyTrack, token: str = "") -> dict:
+    q = f"?t={token}" if token else ""
+    files = {"joints": f"/body/{t.id}/joints.json{q}", "meta": f"/body/{t.id}/meta.json{q}"}
+    if t.has_mesh:
+        files["mesh"] = f"/body/{t.id}/mesh.bin{q}"
+    if t.has_turntable:
+        files["turntable"] = f"/body/{t.id}/turntable.mp4{q}"
+    return files
+
+
+@router.get("/body/{track_id}/view")
+def body_view(track_id: int, request: Request, t: str = "", u: User | None = Depends(optional_user),
+              db: Session = Depends(get_db)):
+    """The viewer alone, full screen: for the app's web view and for a share."""
+    from .main import templates
+    tr = db.get(BodyTrack, track_id)
+    if not tr or tr.status != "done" or not tr.has_mesh:
+        raise HTTPException(404, "No 3D body here")
+    if not (_view_ok(track_id, t) or _may_view(tr.video, u, db)):
+        raise HTTPException(404, "No 3D body here")
+    return templates.TemplateResponse(request, "body3d.html", {"v": tr.video, "track": tr, "files": _files(tr, t)})
 
 
 @router.get("/body/{track_id}/{name}")
-def body_file(track_id: int, name: str, u: User | None = Depends(optional_user),
+def body_file(track_id: int, name: str, t: str = "", u: User | None = Depends(optional_user),
               db: Session = Depends(get_db)):
     """A body file, under the video's own access rule; from R2 by redirect in the cloud."""
-    t = db.get(BodyTrack, track_id)
-    if not t or t.status != "done" or name not in ("joints.json", "mesh.bin", "meta.json", "turntable.mp4"):
+    tr = db.get(BodyTrack, track_id)
+    if not tr or tr.status != "done" or name not in ("joints.json", "mesh.bin", "meta.json", "turntable.mp4"):
         raise HTTPException(404, "No such file")
-    if not _may_view(t.video, u, db):
+    if not (_view_ok(track_id, t) or _may_view(tr.video, u, db)):
         raise HTTPException(404, "No such file")
+    t = tr
     st = get_storage()
     if isinstance(st, LocalStorage):
         try:
