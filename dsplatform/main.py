@@ -387,15 +387,20 @@ async def set_avatar(image: UploadFile = File(...), u: User = Depends(current_us
 
 @app.get("/thumb/{video_id}.jpg")
 def thumb(video_id: int, u: User | None = Depends(optional_user), db: Session = Depends(get_db)):
-    """The post's still. Same rule as the video itself: only who may view it."""
+    """The post's still. Same rule as the video itself: only who may view it,
+    and, like the video, the bytes come from R2 — this process only says yes."""
     v = db.get(Video, video_id)
     if not v or not v.thumb_key or not _may_view(v, u, db):
         raise HTTPException(404, "No still")
-    try:
-        data = get_storage().thumb_bytes(v.thumb_key)
-    except Exception:
-        raise HTTPException(404, "No still")
-    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
+    st = get_storage()
+    if isinstance(st, LocalStorage):
+        try:
+            data = st.thumb_bytes(v.thumb_key)
+        except Exception:
+            raise HTTPException(404, "No still")
+        return Response(data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
+    return RedirectResponse(st.thumb_url(v.thumb_key), status_code=307,
+                            headers={"Cache-Control": "private, max-age=600"})
 
 
 @app.get("/avatar/{handle}.jpg")

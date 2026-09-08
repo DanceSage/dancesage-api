@@ -73,6 +73,9 @@ class Storage(ABC):
     @abstractmethod
     def thumb_bytes(self, key: str) -> bytes: ...
     @abstractmethod
+    def thumb_url(self, key: str) -> str:
+        """Where a client fetches the still itself — R2 in the cloud, never this process."""
+    @abstractmethod
     def delete(self, *, pose: str = "", video: str = "", avatar: str = "", thumb: str = "") -> None:
         """Remove an object. Missing is not an error — deletion must be safe to
         retry, and a half-finished delete must be finishable."""
@@ -138,6 +141,9 @@ class LocalStorage(Storage):
         if not p.exists():
             raise FileNotFoundError(key)
         return p.read_bytes()
+
+    def thumb_url(self, key: str) -> str:
+        return f"/thumb/{key}.jpg"
 
     def delete(self, *, pose: str = "", video: str = "", avatar: str = "", thumb: str = "") -> None:
         for path in (self._path(pose) if pose else None,
@@ -230,6 +236,9 @@ class R2Storage(Storage):
 
     def thumb_bytes(self, key: str) -> bytes:
         return self._get(f"{self.prefix}thumb/{key}.jpg")
+
+    def thumb_url(self, key: str) -> str:
+        return self._url(f"{self.prefix}thumb/{key}.jpg")
 
     def delete(self, *, pose: str = "", video: str = "", avatar: str = "", thumb: str = "") -> None:
         keys = []
