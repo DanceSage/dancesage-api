@@ -21,6 +21,7 @@ from dsplatform.auth import issue_session  # noqa: E402
 
 client = TestClient(app)
 POSE = json.dumps({"j": [[[[0.1 * j, 0.2 * j, 0.0] for j in range(33)] for _ in range(4)]]})
+COUPLE = json.dumps({"j": [[[[0.1 * j, 0.2 * j, 0.0] for j in range(33)] for _ in range(4)]] * 2})
 
 
 def _user(handle, plan="free"):
@@ -35,9 +36,10 @@ def hdr(tok):
     return {"Authorization": f"Bearer {tok}"}
 
 
-def _post_video(tok, title, with_video=True):
+def _post_video(tok, title, with_video=True, couple=False):
     files = {"video": ("clip.mp4", b"\x00\x00\x00\x18ftypmp42" + b"0" * 64, "video/mp4")} if with_video else None
-    r = client.post("/v1/videos", data={"title": title, "pose3d": POSE, "pose2d": POSE, "visibility": "private"},
+    pose = COUPLE if couple else POSE
+    r = client.post("/v1/videos", data={"title": title, "pose3d": pose, "pose2d": pose, "visibility": "private"},
                     files=files, headers=hdr(tok))
     assert r.status_code == 200, r.text
     return r.json()["id"]
@@ -93,8 +95,11 @@ def test_refine_goes_through_the_queue_to_the_worker_and_back():
 
 def test_the_3d_tier_needs_the_paid_plan_and_refined_does_not():
     andy = _user("refandy")
-    vid = _post_video(andy, "Cross body lead")
-    assert client.post(f"/v1/videos/{vid}/refine", json={"tier": "3d"}, headers=hdr(andy)).status_code == 402
+    solo = _post_video(andy, "Shine")
+    assert client.post(f"/v1/videos/{solo}/refine", json={"tier": "3d"}, headers=hdr(andy)).status_code == 402
+    # refine is for couples: a solo dancer goes straight to 3D
+    assert client.post(f"/v1/videos/{solo}/refine", json={"tier": "refined"}, headers=hdr(andy)).status_code == 400
+    vid = _post_video(andy, "Cross body lead", couple=True)
     assert client.post(f"/v1/videos/{vid}/refine", json={"tier": "refined"}, headers=hdr(andy)).json()["status"] == "queued"
     # a failed job is reported, and the tier can be asked for again
     w = {"X-Worker-Token": "worker-secret"}

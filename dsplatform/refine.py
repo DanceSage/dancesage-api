@@ -72,6 +72,8 @@ def request_refine(video_id: int, payload: dict | None = None,
     tier = (payload or {}).get("tier") or "refined"
     if tier not in TIERS:
         raise HTTPException(400, f"tier must be one of {TIERS}")
+    if tier == "refined" and (v.dancers or 1) < 2:
+        raise HTTPException(400, "Refine is for couple videos; a solo dancer goes straight to 3D")
     if TIER_PLAN[tier] == "pro" and u.plan != "pro":
         raise HTTPException(402, "The 3D body is part of the paid plan")
     live = db.execute(select(BodyTrack).where(BodyTrack.video_id == v.id, BodyTrack.tier == tier,
