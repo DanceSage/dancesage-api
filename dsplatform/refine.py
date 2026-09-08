@@ -244,8 +244,10 @@ def queue_state(_: str = Depends(_worker), db: Session = Depends(get_db)):
 # ── starting the GPU when there is work ────────────────────────────────────
 
 def _runpod(query: str) -> dict:
+    # RunPod refuses Python's default user agent with a 403; say who we are.
     req = urllib.request.Request("https://api.runpod.io/graphql", data=json.dumps({"query": query}).encode(),
-                                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {RUNPOD_KEY}"})
+                                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {RUNPOD_KEY}",
+                                          "User-Agent": "dancesage-platform/1.0"})
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read())
 
