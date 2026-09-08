@@ -701,6 +701,10 @@ def _shared_with(me: User, db: Session, *, pending: bool = False) -> list[dict]:
         # A share of someone else's public video is fine while it is public.
         if v.user_id != g.owner_id and v.visibility != "public":
             continue
+        # A student's attempt sent to you is not a share to accept or file: it
+        # sits under the lesson it answers, in I'm teaching.
+        if v.reply_to is not None:
+            continue
         entry = by_owner.setdefault(g.owner_id, {
             "handle": g.owner.handle,
             "display_name": g.owner.display_name,
