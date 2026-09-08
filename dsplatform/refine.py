@@ -267,12 +267,18 @@ def _wake_worker(db: Session) -> None:
                "GIT_TOKEN": os.environ.get("GIT_TOKEN", ""), "WORKER_REF": os.environ.get("WORKER_REF", "refine"),
                "IDLE_MINUTES": os.environ.get("REFINE_IDLE_MINUTES", "10"), "BOOTSTRAP_B64": script}
         env_gql = ", ".join(f'{{key: {json.dumps(k)}, value: {json.dumps(v)}}}' for k, v in env.items())
-        volume = f', networkVolumeId: "{RUNPOD_VOLUME}"' if RUNPOD_VOLUME else ""
         args = json.dumps('bash -c "echo $BOOTSTRAP_B64 | base64 -d > /bootstrap.sh && bash /bootstrap.sh"')
-        _runpod('mutation { podFindAndDeployOnDemand(input: {cloudType: SECURE, gpuCount: 1, '
-                f'gpuTypeId: "{RUNPOD_GPU}", name: "dancesage-refine-worker", imageName: "{RUNPOD_IMAGE}", '
-                f'containerDiskInGb: 60, volumeInGb: 0, minVcpuCount: 8, minMemoryInGb: 32, dockerArgs: {args}, '
-                f'env: [{env_gql}]{volume}}}) {{ id }} }}')
-        print("refine: worker pod started", flush=True)
+        def deploy(extra):
+            return _runpod('mutation { podFindAndDeployOnDemand(input: {gpuCount: 1, '
+                           f'gpuTypeId: "{RUNPOD_GPU}", name: "dancesage-refine-worker", imageName: "{RUNPOD_IMAGE}", '
+                           f'containerDiskInGb: 60, volumeInGb: 0, minVcpuCount: 8, minMemoryInGb: 32, dockerArgs: {args}, '
+                           f'env: [{env_gql}]{extra}}}) {{ id }} }}')
+        # With the weights volume when its data centre has a card; otherwise anywhere,
+        # and the pod fetches the weights itself (ten minutes more).
+        r = deploy(f', networkVolumeId: "{RUNPOD_VOLUME}"') if RUNPOD_VOLUME else {"errors": True}
+        if not (r.get("data") or {}).get("podFindAndDeployOnDemand"):
+            r = deploy(", cloudType: SECURE")
+        ok = (r.get("data") or {}).get("podFindAndDeployOnDemand")
+        print(f"refine: worker pod {'started ' + ok['id'] if ok else 'NOT started: ' + str(r)[:300]}", flush=True)
     except Exception as e:      # a queued job waits; the next request tries again
         print(f"refine: could not start worker: {e}", flush=True)
