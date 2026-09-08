@@ -27,10 +27,16 @@ window.mountBody3D = async function (root, files, opts = {}) {
   let yaw = 0, pitch = 0.1, zoom = 1, meshes = [], c = null;
   // The skeleton: the joints file alone, lines and dots, no surface. What the score uses.
   let skeleton = true, joints = null, bones = null, sk = [];
+  // MHR70 (SAM 3D Body): 0 nose 1-2 eyes 3-4 ears 5-6 shoulders 7-8 elbows 9-10 hips 11-12 knees 13-14 ankles
+  // 15-17 left toes/heel 18-20 right, 21-40 right hand (41 = right wrist), 42-61 left hand (62 = left wrist), 69 neck
   const BONES = {
-    coco: [[5,6],[5,7],[7,9],[6,8],[8,10],[5,11],[6,12],[11,12],[11,13],[13,15],[12,14],[14,16],[0,5],[0,6]],
+    mhr70: [[13,11],[11,9],[14,12],[12,10],[9,10],[5,9],[6,10],[5,6],[5,7],[6,8],[7,62],[8,41],[0,69],[5,69],[6,69],
+            [13,15],[13,16],[13,17],[14,18],[14,19],[14,20],
+            [62,45],[45,44],[44,43],[43,42],[62,49],[49,48],[48,47],[47,46],[62,53],[53,52],[52,51],[51,50],[62,57],[57,56],[56,55],[55,54],[62,61],[61,60],[60,59],[59,58],
+            [41,24],[24,23],[23,22],[22,21],[41,28],[28,27],[27,26],[26,25],[41,32],[32,31],[31,30],[30,29],[41,36],[36,35],[35,34],[34,33],[41,40],[40,39],[39,38],[38,37]],
     smplx: [[0,1],[0,2],[1,4],[2,5],[4,7],[5,8],[7,10],[8,11],[0,3],[3,6],[6,9],[9,12],[12,15],[9,13],[9,14],[13,16],[14,17],[16,18],[17,19],[18,20],[19,21]]
   };
+
 
   function resize() {
     const w = root.clientWidth, h = root.clientHeight;
@@ -53,13 +59,13 @@ window.mountBody3D = async function (root, files, opts = {}) {
   try {
     joints = await (await fetch(files.joints, { credentials: 'same-origin' })).json();
     const first = joints.people.flat().find(f => f && f.length);
-    bones = first && first.length >= 70 ? BONES.coco : BONES.smplx;      // MHR (COCO first) or SMPL-X
+    bones = first && first.length >= 70 ? BONES.mhr70 : BONES.smplx;     // MHR70 (SAM 3D Body) or SMPL-X
     for (let p = 0; p < joints.people.length; p++) {
       const grp = new THREE.Group(); rig.add(grp);
       const mat = new THREE.MeshStandardMaterial({ color: COLOURS[p % 2], roughness: 0.5 });
       const dots = bones.flat().filter((v, i, a) => a.indexOf(v) === i).map(j => {
-        const d = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), mat); d.userData.j = j; grp.add(d); return d; });
-      const limbs = bones.map(() => { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 1, 8), mat); grp.add(l); return l; });
+        const d = new THREE.Mesh(new THREE.SphereGeometry(j >= 21 && j <= 61 && j !== 41 ? 0.008 : 0.022, 10, 8), mat); d.userData.j = j; grp.add(d); return d; });
+      const limbs = bones.map(() => { const hand = b => (b >= 21 && b <= 61 && b !== 41); const l = new THREE.Mesh(new THREE.CylinderGeometry(hand(bones[sk.length] ? 0 : 0) ? 0.005 : 0.011, 0.011, 1, 8), mat); grp.add(l); return l; });
       sk.push({ grp, dots, limbs });
     }
   } catch (e) { joints = null; skeleton = false; }
