@@ -30,7 +30,9 @@ PROFILE = dict(
 # made 38; the rest post the day the curriculum wants them.
 FIRST = {("Salsa", 101), ("Salsa", 102), ("Salsa", 106), ("Salsa", 109), ("Salsa", 111), ("Salsa", 116),
          ("Bachata", 101), ("Bachata", 102), ("Bachata", 104), ("Bachata", 107),
-         ("Salsa", 123), ("Salsa", 124), ("Bachata", 113)}   # styling, solo
+         ("Salsa", 123), ("Salsa", 124), ("Bachata", 113),   # styling, solo
+         ("Salsa", 113), ("Salsa", 117), ("Salsa", 120), ("Salsa", 121),   # intermediate and advanced
+         ("Bachata", 105), ("Bachata", 110), ("Bachata", 112)}
 MANIFEST = pathlib.Path("/Users/abduradi/Documents/dancesage/dancesage-research/rnd/sage_out/manifest.json")
 
 
