@@ -363,6 +363,25 @@ def _playback_ok(key: str, token: str) -> bool:
         return False
 
 
+@app.post("/v1/me/avatar")
+async def set_avatar(image: UploadFile = File(...), u: User = Depends(current_user),
+                     db: Session = Depends(get_db)):
+    """Your picture, a JPEG. Replaces the old one; the page shows it at /avatar/<handle>.jpg."""
+    data = await image.read()
+    if not data or len(data) > 2_000_000:
+        raise HTTPException(400, "Send a JPEG under 2 MB")
+    if not data.startswith(b"\xff\xd8"):
+        raise HTTPException(400, "Only JPEG for now")
+    st = get_storage()
+    if u.avatar_key:
+        st.delete(avatar=u.avatar_key)
+    key = f"{u.handle or u.id}-{int(time.time())}"
+    st.put_avatar(key, data)
+    u.avatar_key = key
+    db.commit()
+    return {"avatar": f"/avatar/{u.handle}.jpg"}
+
+
 @app.get("/avatar/{handle}.jpg")
 def avatar(handle: str, db: Session = Depends(get_db)):
     """A profile photo, or 404 so the page falls back to initials."""
