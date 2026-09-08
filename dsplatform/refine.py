@@ -32,9 +32,12 @@ TIERS = ("refined", "3d")
 TIER_PLAN = {"refined": "free", "3d": "pro"}
 WORKER_TOKEN = os.environ.get("REFINE_WORKER_TOKEN", "")
 RUNPOD_KEY = os.environ.get("RUNPOD_API_KEY", "")
-RUNPOD_TEMPLATE = os.environ.get("RUNPOD_TEMPLATE_ID", "")     # the worker image, set up once in RunPod
 RUNPOD_GPU = os.environ.get("RUNPOD_GPU", "NVIDIA A40")
+RUNPOD_VOLUME = os.environ.get("RUNPOD_VOLUME_ID", "")         # keeps the 24 GB of weights between pods
+RUNPOD_IMAGE = os.environ.get("RUNPOD_IMAGE", "pytorch/pytorch:2.7.1-cuda11.8-cudnn9-devel")
 PLATFORM_BASE = os.environ.get("PLATFORM_BASE", "https://dancesage-api.fly.dev")
+# The worker bootstraps itself on a bare PyTorch pod from this script: no image to build.
+BOOTSTRAP = (os.path.join(os.path.dirname(__file__), "refine_bootstrap.sh"))
 
 
 # ── what the app and the web see ────────────────────────────────────────────
@@ -248,17 +251,28 @@ def _runpod(query: str) -> dict:
 
 
 def _wake_worker(db: Session) -> None:
-    """A pod from the worker template, if none is running. The worker stops itself
-    when the queue has been empty for a while, so idle time costs nothing."""
-    if not (RUNPOD_KEY and RUNPOD_TEMPLATE):
+    """A GPU pod running the worker, if none is running. It bootstraps itself from
+    refine_bootstrap.sh and stops itself when the queue has been empty for a
+    while, so idle time costs nothing."""
+    if not (RUNPOD_KEY and os.environ.get("REFINE_WORKER_TOKEN")):
         return
     try:
         pods = _runpod('{ myself { pods { id name desiredStatus } } }')["data"]["myself"]["pods"]
         if any(p["name"] == "dancesage-refine-worker" and p["desiredStatus"] == "RUNNING" for p in pods):
             return
+        import base64
+        script = base64.b64encode(open(BOOTSTRAP, "rb").read()).decode()
+        env = {"PLATFORM_BASE": PLATFORM_BASE, "REFINE_WORKER_TOKEN": os.environ.get("REFINE_WORKER_TOKEN", ""),
+               "HF_TOKEN": os.environ.get("HF_TOKEN", ""), "RUNPOD_API_KEY": RUNPOD_KEY,
+               "GIT_TOKEN": os.environ.get("GIT_TOKEN", ""), "WORKER_REF": os.environ.get("WORKER_REF", "refine"),
+               "IDLE_MINUTES": os.environ.get("REFINE_IDLE_MINUTES", "10"), "BOOTSTRAP_B64": script}
+        env_gql = ", ".join(f'{{key: {json.dumps(k)}, value: {json.dumps(v)}}}' for k, v in env.items())
+        volume = f', networkVolumeId: "{RUNPOD_VOLUME}"' if RUNPOD_VOLUME else ""
+        args = json.dumps('bash -c "echo $BOOTSTRAP_B64 | base64 -d > /bootstrap.sh && bash /bootstrap.sh"')
         _runpod('mutation { podFindAndDeployOnDemand(input: {cloudType: SECURE, gpuCount: 1, '
-                f'gpuTypeId: "{RUNPOD_GPU}", name: "dancesage-refine-worker", templateId: "{RUNPOD_TEMPLATE}", '
-                'containerDiskInGb: 60, volumeInGb: 0, minVcpuCount: 8, minMemoryInGb: 32}) { id } }')
+                f'gpuTypeId: "{RUNPOD_GPU}", name: "dancesage-refine-worker", imageName: "{RUNPOD_IMAGE}", '
+                f'containerDiskInGb: 60, volumeInGb: 0, minVcpuCount: 8, minMemoryInGb: 32, dockerArgs: {args}, '
+                f'env: [{env_gql}]{volume}}}) {{ id }} }}')
         print("refine: worker pod started", flush=True)
     except Exception as e:      # a queued job waits; the next request tries again
         print(f"refine: could not start worker: {e}", flush=True)
