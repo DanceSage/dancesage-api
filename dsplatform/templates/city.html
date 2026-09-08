@@ -13,7 +13,7 @@ nothing here is ranked by followers.</p>
 <div class="grid">
   {% for c in cards %}
   <a class="card" href="/@{{ c.teacher.handle }}">
-    {% if c.video.thumb_key %}<img class="still" src="/thumb/{{ c.video.id }}.jpg" alt="" loading="lazy">{% else %}<canvas data-pose="/pose/{{ c.video.pose_key }}.json"></canvas>{% endif %}
+    {% if c.video.thumb_key or c.video.thumb %}<img class="still" src="/thumb/{{ c.video.id }}.jpg" alt="" loading="lazy">{% else %}<canvas data-pose="/pose/{{ c.video.pose_key }}.json"></canvas>{% endif %}
     <div class="meta">
       <div class="t">{{ c.teacher.display_name }}</div>
       <div class="s">{{ c.teacher.styles }}</div>
