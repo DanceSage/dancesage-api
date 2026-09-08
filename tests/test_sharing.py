@@ -523,7 +523,7 @@ def test_a_ta_chooses_where_attempts_go():
     a2 = client.post("/v1/videos", data={"title": "try 2", "pose3d": pose, "pose2d": pose, "reply_to": video}, headers=hdr(zoe)).json()["id"]
     assert client.get("/v1/lessons", headers=hdr(zoe)).json()["lessons"][0]["teacher"]["handle"] == "bigboss"
     assert client.post(f"/v1/lessons/{a2}/send", headers=hdr(zoe)).json()["to"] == "bigboss"
-    assert _inbox_titles(boss) == ["try 2"]
+    assert _inbox_titles(boss) == [] and _class_attempt_titles(boss) == ["try 2"]
     # And Zoe can't route an attempt anywhere else herself.
     assert client.post("/v1/grants", json={"handle": "ta", "video_id": a2}, headers=hdr(zoe)).status_code == 400
     assert client.post("/v1/grants", json={"handle": "zoe2", "video_id": video, "replies_to": "nobody"}, headers=hdr(ta)).status_code == 400
