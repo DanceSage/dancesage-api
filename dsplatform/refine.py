@@ -1,7 +1,7 @@
 """Refine: the bodies made after the fact, and the worker that makes them.
 
 Tiers, matching the product:
-  refined   both dancers as bodies, from a GPU worker, minutes and cents
+  refined   the light 3D skeleton: RTMPose + MotionAGFormer on a CPU, seconds, free
   3d        the full tracked body, turnable, the paid stage
 
 The platform never runs a model. It keeps a queue (body_tracks), hands jobs to a
@@ -72,8 +72,6 @@ def request_refine(video_id: int, payload: dict | None = None,
     tier = (payload or {}).get("tier") or "refined"
     if tier not in TIERS:
         raise HTTPException(400, f"tier must be one of {TIERS}")
-    if tier == "refined" and (v.dancers or 1) < 2:
-        raise HTTPException(400, "Refine is for couple videos; a solo dancer goes straight to 3D")
     if TIER_PLAN[tier] == "pro" and u.plan != "pro":
         raise HTTPException(402, "The 3D body is part of the paid plan")
     live = db.execute(select(BodyTrack).where(BodyTrack.video_id == v.id, BodyTrack.tier == tier,
@@ -112,7 +110,7 @@ def get_body(video_id: int, tier: str = "", u: User | None = Depends(optional_us
     return {"summary": body_summary(v, db),
             "track": {"id": t.id, "tier": t.tier, "engine": t.engine, "fps": t.fps,
                       "dancers": t.dancers, "frames": t.frames, "files": files,
-                      "view_url": f"/body/{t.id}/view?t={token}" if t.has_mesh else None}}
+                      "view_url": f"/body/{t.id}/view?t={token}"}}
 
 
 def _view_token(track_id: int, expires: int) -> str:
@@ -142,7 +140,7 @@ def body_view(track_id: int, request: Request, t: str = "", u: User | None = Dep
     """The viewer alone, full screen: for the app's web view and for a share."""
     from .main import templates
     tr = db.get(BodyTrack, track_id)
-    if not tr or tr.status != "done" or not tr.has_mesh:
+    if not tr or tr.status != "done":
         raise HTTPException(404, "No 3D body here")
     if not (_view_ok(track_id, t) or _may_view(tr.video, u, db)):
         raise HTTPException(404, "No 3D body here")

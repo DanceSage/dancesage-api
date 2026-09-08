@@ -97,13 +97,15 @@ def test_the_3d_tier_needs_the_paid_plan_and_refined_does_not():
     andy = _user("refandy")
     solo = _post_video(andy, "Shine")
     assert client.post(f"/v1/videos/{solo}/refine", json={"tier": "3d"}, headers=hdr(andy)).status_code == 402
-    # refine is for couples: a solo dancer goes straight to 3D
-    assert client.post(f"/v1/videos/{solo}/refine", json={"tier": "refined"}, headers=hdr(andy)).status_code == 400
+    # the light skeleton is free and works on a solo dancer too
+    assert client.post(f"/v1/videos/{solo}/refine", json={"tier": "refined"}, headers=hdr(andy)).json()["status"] == "queued"
     vid = _post_video(andy, "Cross body lead", couple=True)
     assert client.post(f"/v1/videos/{vid}/refine", json={"tier": "refined"}, headers=hdr(andy)).json()["status"] == "queued"
     # a failed job is reported, and the tier can be asked for again
     w = {"X-Worker-Token": "worker-secret"}
     job = client.get("/v1/refine/next", headers=w).json()["job"]
+    while job and job["video_id"] != vid:                       # the solo job queued above goes first
+        job = client.get("/v1/refine/next", headers=w).json()["job"]
     assert client.post(f"/v1/refine/{job['id']}/fail", json={"error": "out of memory"}, headers=w).status_code == 200
     assert client.get(f"/v1/videos/{vid}/body", headers=hdr(andy)).json()["summary"]["refined"]["status"] == "failed"
     assert client.post(f"/v1/videos/{vid}/refine", json={"tier": "refined"}, headers=hdr(andy)).json()["status"] == "queued"

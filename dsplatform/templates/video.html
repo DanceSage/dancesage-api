@@ -78,7 +78,7 @@
     <div class="ctl" style="margin:0 0 10px">
       {% if v.has_video %}<button class="layer on" data-layer="video"><span class="dot" style="background:#fff"></span>Video</button>{% endif %}
       <button class="layer on" data-layer="skel"><span class="dot" style="background:#3ad6b0"></span>Skeleton</button>
-      {% if body_track %}<button class="layer" data-layer="body" title="The refined 3D body — drag to turn"><span class="dot" style="background:#EC48C8"></span>3D body</button>{% endif %}
+      {% if body_track %}<button class="layer" data-layer="body" title="The 3D skeleton — drag to turn"><span class="dot" style="background:#EC48C8"></span>3D</button>{% endif %}
       {% if v.dancers > 1 %}{% for d in range(v.dancers) %}
       <button class="dancer" data-dancer="{{ d }}"><span class="dot" data-dancer-dot="{{ d }}"></span>Dancer {{ d + 1 }}</button>
       {% endfor %}{% endif %}
@@ -113,7 +113,7 @@
     {# Refine: a body made after the fact. Refined is free while it costs cents; 3D is the paid plan. #}
     <div class="refine" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
       {% if not body.get('3d') or body['3d'].status == 'failed' %}<button class="grm" data-refine="3d" style="color:#EC48C8">Make it 3D{% if me.plan != 'pro' %} · paid{% endif %}</button>{% endif %}
-      {% if v.dancers > 1 and (not body.get('refined') or body['refined'].status == 'failed') %}<button class="grm" data-refine="refined" style="color:var(--teal)">Refine both dancers</button>{% endif %}
+      {% if not body.get('refined') or body['refined'].status == 'failed' %}<button class="grm" data-refine="refined" style="color:var(--teal)">3D skeleton · free</button>{% endif %}
       <span class="refine-msg" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
     </div>
     {% endif %}
@@ -228,7 +228,7 @@ if (HASVID) {
   c.addEventListener('pointerup',end); c.addEventListener('pointercancel',end);
 }
 </script>{% endif %}
-{% if body_track %}<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script><script src="/static/body3d.js?v=3"></script><script>
+{% if body_track %}<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script><script src="/static/body3d.js?v=4"></script><script>
 (() => {
   // The 3D mode: the fitted body in place of video and skeleton. Mounted once, on first use.
   const chip = document.querySelector('button.layer[data-layer="body"]'), box = document.getElementById('body3d');
