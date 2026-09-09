@@ -34,9 +34,7 @@ window.mountBody3D = async function (root, files, opts = {}) {
             [13,15],[13,16],[13,17],[14,18],[14,19],[14,20],
             [62,45],[45,44],[44,43],[43,42],[62,49],[49,48],[48,47],[47,46],[62,53],[53,52],[52,51],[51,50],[62,57],[57,56],[56,55],[55,54],[62,61],[61,60],[60,59],[59,58],
             [41,24],[24,23],[23,22],[22,21],[41,28],[28,27],[27,26],[26,25],[41,32],[32,31],[31,30],[30,29],[41,36],[36,35],[35,34],[34,33],[41,40],[40,39],[39,38],[38,37]],
-    smplx: [[0,1],[0,2],[1,4],[2,5],[4,7],[5,8],[7,10],[8,11],[0,3],[3,6],[6,9],[9,12],[12,15],[9,13],[9,14],[13,16],[14,17],[16,18],[17,19],[18,20],[19,21]],
-    // H36M-17 (the light tier): 0 pelvis 1-3 right leg 4-6 left leg 7 spine 8 thorax 9 neck 10 head 11-13 left arm 14-16 right arm
-    h36m17: [[0,1],[1,2],[2,3],[0,4],[4,5],[5,6],[0,7],[7,8],[8,9],[9,10],[8,11],[11,12],[12,13],[8,14],[14,15],[15,16]]
+    smplx: [[0,1],[0,2],[1,4],[2,5],[4,7],[5,8],[7,10],[8,11],[0,3],[3,6],[6,9],[9,12],[12,15],[9,13],[9,14],[13,16],[14,17],[16,18],[17,19],[18,20],[19,21]]
   };
 
 
@@ -47,14 +45,11 @@ window.mountBody3D = async function (root, files, opts = {}) {
   new ResizeObserver(resize).observe(root); resize();
 
   const meta = await (await fetch(files.meta, { credentials: 'same-origin' })).json();
-  c = { m: meta };
-  if (files.mesh) {
-    const bytes = new Uint8Array(await (await fetch(files.mesh, { credentials: 'same-origin' })).arrayBuffer());
-    const nf = meta.faces * 3;
-    c.faces = new Uint32Array(bytes.buffer, bytes.byteOffset, nf);
-    c.verts = new Uint16Array(bytes.buffer, bytes.byteOffset + nf * 4, meta.people * meta.frames * meta.verts * 3);
-  }
-  for (let p = 0; files.mesh && p < meta.people; p++) {
+  const bytes = new Uint8Array(await (await fetch(files.mesh, { credentials: 'same-origin' })).arrayBuffer());
+  const nf = meta.faces * 3;
+  c = { m: meta, faces: new Uint32Array(bytes.buffer, bytes.byteOffset, nf),
+        verts: new Uint16Array(bytes.buffer, bytes.byteOffset + nf * 4, meta.people * meta.frames * meta.verts * 3) };
+  for (let p = 0; p < meta.people; p++) {
     const g = new THREE.BufferGeometry();
     g.setIndex(new THREE.BufferAttribute(c.faces, 1));
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(meta.verts * 3), 3));
@@ -64,7 +59,7 @@ window.mountBody3D = async function (root, files, opts = {}) {
   try {
     joints = await (await fetch(files.joints, { credentials: 'same-origin' })).json();
     const first = joints.people.flat().find(f => f && f.length);
-    bones = first && first.length >= 70 ? BONES.mhr70 : first && first.length === 17 ? BONES.h36m17 : BONES.smplx;
+    bones = first && first.length >= 70 ? BONES.mhr70 : BONES.smplx;     // MHR70 (SAM 3D Body) or SMPL-X
     for (let p = 0; p < joints.people.length; p++) {
       const grp = new THREE.Group(); rig.add(grp);
       const mat = new THREE.MeshStandardMaterial({ color: COLOURS[p % 2], roughness: 0.5 });
@@ -74,18 +69,7 @@ window.mountBody3D = async function (root, files, opts = {}) {
       sk.push({ grp, dots, limbs });
     }
   } catch (e) { joints = null; skeleton = false; }
-  let lo = meta.lo, hi = meta.hi;
-  if (!lo || !hi) {
-    // no mesh: frame the scene by the joints (camera frame -> viewer frame is x, -y, -z)
-    lo = [1e9, 1e9, 1e9]; hi = [-1e9, -1e9, -1e9];
-    for (const pp of (joints ? joints.people : [])) for (const f of pp) if (f) for (const j of f) {
-      const v = [j[0], -j[1], -j[2]];
-      for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], v[k]); hi[k] = Math.max(hi[k], v[k]); }
-    }
-    if (lo[0] > hi[0]) { lo = [-1, -1, -1]; hi = [1, 1, 1]; }
-  }
-  if (!files.mesh) skeleton = true;
-  c.centre = [(lo[0]+hi[0])/2, (lo[1]+hi[1])/2, (lo[2]+hi[2])/2];
+  const lo = meta.lo, hi = meta.hi; c.centre = [(lo[0]+hi[0])/2, (lo[1]+hi[1])/2, (lo[2]+hi[2])/2];
   c.size = Math.max(hi[1]-lo[1], (hi[0]-lo[0]) * root.clientHeight / Math.max(1, root.clientWidth));
   const grid = new THREE.GridHelper(4, 16, 0x2A2F37, 0x1E232A); grid.position.y = (lo[1]-c.centre[1]) - 0.02; rig.add(grid);
   $('.b3-scrub').max = meta.frames - 1; $('.b3-status').hidden = true;
@@ -111,7 +95,7 @@ window.mountBody3D = async function (root, files, opts = {}) {
   function setFrame() {
     const m = c.m, n = m.verts * 3, [cx, cy, cz] = c.centre;
     if (joints) setSkeleton();
-    for (let p = 0; p < meshes.length; p++) {
+    for (let p = 0; p < m.people; p++) {
       if (skeleton) continue;
       const dst = meshes[p].geometry.attributes.position.array, off = (p * m.frames + frame) * n;
       for (let i = 0; i < n; i += 3) {
@@ -136,7 +120,7 @@ window.mountBody3D = async function (root, files, opts = {}) {
     last = now; requestAnimationFrame(tick);
   }
   $$('.b3-views button[data-yaw]').forEach(b => b.onclick = () => { yaw = b.dataset.yaw * Math.PI / 180; });
-  const modeBtn = $('.b3-mode'); modeBtn.hidden = !joints || !files.mesh;
+  const modeBtn = $('.b3-mode'); modeBtn.hidden = !joints;
   const showMode = () => { modeBtn.textContent = skeleton ? 'Body' : 'Skeleton'; };
   modeBtn.onclick = () => { skeleton = !skeleton; showMode(); frame = -1; };
   if (!joints) skeleton = false; showMode();
