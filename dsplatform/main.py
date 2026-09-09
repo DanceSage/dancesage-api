@@ -79,24 +79,8 @@ def _migrate_grant_offers():
             if "plan" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN plan VARCHAR(12) DEFAULT 'free'"))
                 print("users: added plan", flush=True)
-            bcols = [row[1] for row in conn.execute(text("PRAGMA table_info(body_tracks)"))]
-            if bcols and "pose_key" not in bcols:
-                conn.execute(text("ALTER TABLE body_tracks ADD COLUMN pose_key VARCHAR(200) DEFAULT ''"))
-                print("body_tracks: added pose_key", flush=True)
     except Exception as e:
         print(f"grant offers migration skipped: {e}", flush=True)
-
-
-@app.on_event("startup")
-async def _backfill_bodies():
-    from .db import SessionLocal
-    from .refine import backfill_app_tracks
-    try:
-        with SessionLocal() as db:
-            n = backfill_app_tracks(db)
-        if n: print(f"bodies: {n} app track(s) made", flush=True)
-    except Exception as e:
-        print(f"body backfill skipped: {e}", flush=True)
 
 
 @app.on_event("startup")
@@ -344,13 +328,8 @@ def pose(key: str, request: Request, u: User | None = Depends(optional_user),
 def _owner_of(db: Session, *, pose: str = "", video: str = "") -> Video | None:
     """The post a stored object belongs to. Unknown objects have no owner."""
     if pose:
-        v = db.execute(select(Video).where(
+        return db.execute(select(Video).where(
             (Video.pose_key == pose) | (Video.pose2d_key == pose))).scalars().first()
-        if v is None:
-            # a body's app track carries its video's access rule
-            t = db.execute(select(BodyTrack).where(BodyTrack.pose_key == pose)).scalars().first()
-            v = t.video if t else None
-        return v
     return db.execute(select(Video).where(Video.video_key == video)).scalars().first()
 
 

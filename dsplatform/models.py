@@ -247,9 +247,6 @@ class BodyTrack(Base):
     # storage keys under body/<id>/: joints.json, mesh.bin, meta.json, turntable.mp4
     has_mesh: Mapped[int] = mapped_column(Integer, default=0)
     has_turntable: Mapped[int] = mapped_column(Integer, default=0)
-    # the same body as an app pose track (33 MediaPipe points, metres), so the phone
-    # draws it natively and the score can read it: pose/<key>.json
-    pose_key: Mapped[str] = mapped_column(String(200), default="")
     error: Mapped[str] = mapped_column(Text, default="")
     worker: Mapped[str] = mapped_column(String(80), default="")
     seconds: Mapped[float] = mapped_column(Float, default=0)       # worker time, for the bill
