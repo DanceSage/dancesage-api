@@ -36,7 +36,11 @@ window.mountBody3D = async function (root, files, opts = {}) {
             [41,24],[24,23],[23,22],[22,21],[41,28],[28,27],[27,26],[26,25],[41,32],[32,31],[31,30],[30,29],[41,36],[36,35],[35,34],[34,33],[41,40],[40,39],[39,38],[38,37]],
     smplx: [[0,1],[0,2],[1,4],[2,5],[4,7],[5,8],[7,10],[8,11],[0,3],[3,6],[6,9],[9,12],[12,15],[9,13],[9,14],[13,16],[14,17],[16,18],[17,19],[18,20],[19,21]],
     // H36M-17 (the light tier): 0 pelvis 1-3 right leg 4-6 left leg 7 spine 8 thorax 9 neck 10 head 11-13 left arm 14-16 right arm
-    h36m17: [[0,1],[1,2],[2,3],[0,4],[4,5],[5,6],[0,7],[7,8],[8,9],[9,10],[8,11],[11,12],[12,13],[8,14],[14,15],[15,16]]
+    h36m17: [[0,1],[1,2],[2,3],[0,4],[4,5],[5,6],[0,7],[7,8],[8,9],[9,10],[8,11],[11,12],[12,13],[8,14],[14,15],[15,16]],
+    // MediaPipe 33: face 0-10, arms 11-22 (hands 17-22), legs 23-32 (feet 29-32)
+    mediapipe33: [[11,12],[11,13],[13,15],[12,14],[14,16],[15,17],[15,19],[15,21],[17,19],[16,18],[16,20],[16,22],[18,20],
+                  [11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,29],[27,31],[29,31],[28,30],[28,32],[30,32],
+                  [0,1],[1,2],[2,3],[3,7],[0,4],[4,5],[5,6],[6,8],[9,10]]
   };
 
 
@@ -64,7 +68,7 @@ window.mountBody3D = async function (root, files, opts = {}) {
   try {
     joints = await (await fetch(files.joints, { credentials: 'same-origin' })).json();
     const first = joints.people.flat().find(f => f && f.length);
-    bones = first && first.length >= 70 ? BONES.mhr70 : first && first.length === 17 ? BONES.h36m17 : BONES.smplx;
+    bones = first && first.length >= 70 ? BONES.mhr70 : first && first.length === 33 ? BONES.mediapipe33 : first && first.length === 17 ? BONES.h36m17 : BONES.smplx;
     for (let p = 0; p < joints.people.length; p++) {
       const grp = new THREE.Group(); rig.add(grp);
       const mat = new THREE.MeshStandardMaterial({ color: COLOURS[p % 2], roughness: 0.5 });
