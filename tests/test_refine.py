@@ -59,7 +59,7 @@ def test_refine_goes_through_the_queue_to_the_worker_and_back():
     job_id = r.json()["id"]
     assert client.post(f"/v1/videos/{vid}/refine", json={"tier": "3d"}, headers=hdr(maya)).json()["id"] == job_id
     assert client.get(f"/v1/videos/{vid}/body", headers=hdr(maya)).json() == {
-        "summary": {"3d": {"id": job_id, "status": "queued", "fps": 0, "dancers": 0, "has_mesh": False, "has_turntable": False}},
+        "summary": {"3d": {"id": job_id, "status": "queued", "fps": 0, "dancers": 0, "has_mesh": False, "has_turntable": False, "pose_key": ""}},
         "track": None}
     # the card says so too
     me = client.get("/v1/me", headers=hdr(maya)).json()
@@ -85,6 +85,7 @@ def test_refine_goes_through_the_queue_to_the_worker_and_back():
     assert body["track"]["tier"] == "3d" and body["track"]["engine"] == "sam-body4d"
     assert set(body["track"]["files"]) == {"joints", "meta", "mesh", "turntable"}
     assert client.get(f"/body/{job_id}/joints.json", headers=hdr(maya)).json() == {"people": []}
+    assert body["track"]["pose_key"] == ""                      # nothing to convert from an empty file
 
     # a stranger sees neither the body nor its files: the post is private
     leo = _user("refleo")
@@ -135,3 +136,28 @@ def test_the_video_page_and_the_viewer_page_show_the_body():
     assert client.get(f"/body/{job}/mesh.bin?t={tok}").status_code == 200
     assert client.get(f"/body/{job}/view").status_code == 404          # no token, no session
     assert client.get(f"/body/{job}/view?t=bogus").status_code == 404
+
+
+def test_a_delivered_body_becomes_an_app_pose_track():
+    zoe = _user("refzoe2", plan="pro")
+    vid = _post_video(zoe, "Cross body lead", couple=True)
+    assert client.post(f"/v1/videos/{vid}/refine", json={"tier": "3d"}, headers=hdr(zoe)).json()["status"] == "queued"
+    w = {"X-Worker-Token": "worker-secret"}
+    job = client.get("/v1/refine/next", headers=w).json()["job"]
+    while job and job["video_id"] != vid:
+        job = client.get("/v1/refine/next", headers=w).json()["job"]
+    # two dancers, three frames, 70 MHR points each; dancer 2 missing in the middle frame
+    frame = [[0.01 * i, 0.02 * i, 3.0 + 0.001 * i] for i in range(70)]
+    joints = {"fps": 30, "frames": 3, "people": [[frame, frame, frame], [frame, None, frame]]}
+    r = client.post(f"/v1/refine/{job['id']}/result", headers=w,
+                    data={"engine": "sam-body4d-lite", "fps": 30, "dancers": 2, "frames": 3},
+                    files={"joints": ("joints.json", json.dumps(joints).encode(), "application/json"),
+                           "meta": ("meta.json", b"{}", "application/json")})
+    assert r.status_code == 200, r.text
+    body = client.get(f"/v1/videos/{vid}/body", headers=hdr(zoe)).json()
+    key = body["track"]["pose_key"]
+    assert key.endswith(f"-body{job['id']}") and body["summary"]["3d"]["pose_key"] == key
+    track = client.get(f"/pose/{key}.json", headers=hdr(zoe)).json()
+    assert track["dancers"] == 2 and track["frames"] == 3 and len(track["j"][0][0]) == 33
+    assert track["j"][1][1] == track["j"][1][0]                 # the missing frame holds the last pose
+    assert track["j"][0][0][15] == [round(0.01 * 62, 3), round(0.02 * 62, 3), round(3.0 + 0.001 * 62, 3)]   # left wrist = MHR 62

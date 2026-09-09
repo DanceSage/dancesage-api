@@ -51,7 +51,8 @@ def body_summary(v: Video, db: Session) -> dict:
         if t.tier in out:
             continue
         out[t.tier] = {"id": t.id, "status": t.status, "fps": t.fps, "dancers": t.dancers,
-                       "has_mesh": bool(t.has_mesh), "has_turntable": bool(t.has_turntable)}
+                       "has_mesh": bool(t.has_mesh), "has_turntable": bool(t.has_turntable),
+                       "pose_key": t.pose_key or ""}
     return out
 
 
@@ -109,7 +110,7 @@ def get_body(video_id: int, tier: str = "", u: User | None = Depends(optional_us
     token = _view_token(t.id, int(time.time()) + PLAYBACK_TTL)
     return {"summary": body_summary(v, db),
             "track": {"id": t.id, "tier": t.tier, "engine": t.engine, "fps": t.fps,
-                      "dancers": t.dancers, "frames": t.frames, "files": files,
+                      "dancers": t.dancers, "frames": t.frames, "files": files, "pose_key": t.pose_key or "",
                       "view_url": f"/body/{t.id}/view?t={token}"}}
 
 
@@ -169,6 +170,96 @@ def body_file(track_id: int, name: str, t: str = "", u: User | None = Depends(op
                             headers={"Cache-Control": "private, no-store"})
 
 
+# ── the body as an app pose track ────────────────────────────────────────────
+
+# MHR70 (SAM 3D Body): 0 nose 1-2 eyes 3-4 ears 5-6 shoulders 7-8 elbows 9-10 hips 11-12 knees
+# 13-14 ankles, 15-17 left big toe/small toe/heel, 18-20 right, right hand 21-40 (41 wrist),
+# left hand 42-61 (62 wrist), 69 neck. MediaPipe 33 is what the app draws and scores.
+def _mhr70_to_mp33(f):
+    def mid(a, b): return [(a[k] + b[k]) / 2 for k in range(3)]
+    def off(a, d, s): return [a[k] + s * d[k] for k in range(3)]
+    lat = [f[1][k] - f[2][k] for k in range(3)]          # left eye - right eye
+    n = sum(v * v for v in lat) ** 0.5 or 1.0; lat = [v / n for v in lat]
+    nose, neck = f[0], f[69]
+    mouth = [nose[k] + 0.35 * (neck[k] - nose[k]) for k in range(3)]
+    return [nose, off(f[1], lat, -0.012), f[1], off(f[1], lat, 0.012), off(f[2], lat, 0.012), f[2], off(f[2], lat, -0.012),
+            f[3], f[4], off(mouth, lat, 0.02), off(mouth, lat, -0.02),
+            f[5], f[6], f[7], f[8], f[62], f[41],
+            f[61], f[40], f[49], f[28], f[44], f[23],      # pinky, index, thumb (left, right)
+            f[9], f[10], f[11], f[12], f[13], f[14],
+            f[17], f[20], f[15], f[18]]                     # heels, big toes
+
+
+# H36M-17 (the light tier): 0 pelvis 1-3 right hip/knee/ankle 4-6 left 7 spine 8 thorax 9 nose 10 head
+# 11-13 left shoulder/elbow/wrist 14-16 right
+def _h36m17_to_mp33(f):
+    def off(a, d, s): return [a[k] + s * d[k] for k in range(3)]
+    lat = [f[11][k] - f[14][k] for k in range(3)]; n = sum(v * v for v in lat) ** 0.5 or 1.0; lat = [v / n for v in lat]
+    down = [f[0][k] - f[8][k] for k in range(3)]; m = sum(v * v for v in down) ** 0.5 or 1.0; down = [v / m for v in down]
+    nose, head = f[9], f[10]
+    eye = lambda s: off(off(head, lat, s), down, 0.03)
+    return [nose, eye(0.02), eye(0.03), eye(0.045), eye(-0.045), eye(-0.03), eye(-0.02), off(head, lat, 0.075), off(head, lat, -0.075),
+            off(nose, lat, 0.02), off(nose, lat, -0.02),
+            f[11], f[14], f[12], f[15], f[13], f[16],
+            off(f[13], lat, 0.04), off(f[16], lat, -0.04), off(f[13], down, 0.06), off(f[16], down, 0.06), off(f[13], lat, -0.03), off(f[16], lat, 0.03),
+            f[4], f[1], f[5], f[2], f[6], f[3],
+            off(f[6], down, 0.05), off(f[3], down, 0.05),                      # heels: a little below the ankles
+            [f[6][0], f[6][1] + 0.04, f[6][2] - 0.12], [f[3][0], f[3][1] + 0.04, f[3][2] - 0.12]]   # toes: forward
+
+
+def app_track(joints: dict, fps: float) -> dict | None:
+    """joints.json (per dancer per frame, MHR70, H36M17 or SMPL-X 22) -> the app's pose track:
+    33 MediaPipe points per frame, metres, camera frame; a missing frame holds the last pose."""
+    people = joints.get("people") or []
+    if not people:
+        return None
+    first = next((f for p in people for f in p if f), None)
+    if not first:
+        return None
+    n = len(first)
+    conv = _mhr70_to_mp33 if n >= 70 else _h36m17_to_mp33 if n == 17 else None
+    if conv is None:
+        return None
+    dancers = []
+    for p in people:
+        out, last = [], None
+        for f in p:
+            if f and len(f) >= n:
+                last = [[round(float(v), 3) for v in j] for j in conv(f)]
+            out.append(last)
+        if last is None:
+            continue
+        firstpose = next(x for x in out if x)
+        dancers.append([x if x else firstpose for x in out])
+    if not dancers:
+        return None
+    frames = min(len(d) for d in dancers)
+    xs = [j[0] for d in dancers for f in d for j in f]; ys = [j[1] for d in dancers for f in d for j in f]; zs = [j[2] for d in dancers for f in d for j in f]
+    return {"fps": float(joints.get("fps") or fps), "frames": frames, "dancers": len(dancers),
+            "height": 1.7, "centre": [(min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, (min(zs) + max(zs)) / 2],
+            "t": [], "j": [d[:frames] for d in dancers], "source": "body"}
+
+
+def backfill_app_tracks(db: Session) -> int:
+    """Done bodies delivered before the app track existed: make theirs now."""
+    n = 0; st = get_storage()
+    for t in db.execute(select(BodyTrack).where(BodyTrack.status == "done", BodyTrack.pose_key == "")).scalars().all():
+        try:
+            raw = st.body_bytes(t.id, "joints.json") if isinstance(st, LocalStorage) else None
+            if raw is None:
+                import urllib.request
+                raw = urllib.request.urlopen(st.body_url(t.id, "joints.json"), timeout=60).read()
+            track = app_track(json.loads(raw), t.fps)
+        except Exception as e:
+            print(f"body {t.id}: backfill skipped ({e})", flush=True); continue
+        if not track:
+            continue
+        stem = t.video.pose_key.rsplit("-3d", 1)[0] if t.video.pose_key else f"{t.video.user.handle}/upload-{t.video.id}"
+        t.pose_key = st.put_pose(f"{stem}-body{t.id}", track); n += 1
+    db.commit()
+    return n
+
+
 # ── the worker's side ───────────────────────────────────────────────────────
 
 def _worker(x_worker_token: str = Header(default="")) -> str:
@@ -211,8 +302,17 @@ async def post_result(track_id: int, engine: str = Form(...), fps: float = Form(
     if not t or t.status != "running":
         raise HTTPException(404, "No such running job")
     st = get_storage()
-    st.put_body(t.id, "joints.json", await joints.read(), "application/json")
+    joints_raw = await joints.read()
+    st.put_body(t.id, "joints.json", joints_raw, "application/json")
     st.put_body(t.id, "meta.json", await meta.read(), "application/json")
+    # the same body as an app pose track, so the phone draws it and the score reads it
+    try:
+        track33 = app_track(json.loads(joints_raw), fps)
+    except (ValueError, TypeError, KeyError, IndexError) as e:
+        track33 = None; print(f"body {t.id}: no app track ({e})", flush=True)
+    if track33:
+        stem = t.video.pose_key.rsplit("-3d", 1)[0] if t.video.pose_key else f"{t.video.user.handle}/upload-{t.video.id}"
+        t.pose_key = st.put_pose(f"{stem}-body{t.id}", track33)
     if mesh is not None:
         st.put_body(t.id, "mesh.bin", await mesh.read(), "application/octet-stream"); t.has_mesh = 1
     if turntable is not None:
