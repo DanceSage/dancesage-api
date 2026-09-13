@@ -339,7 +339,12 @@ def video(video_id: int, request: Request, me: User | None = Depends(optional_us
         lesson = None
     # The refined bodies, if any: the 3D mode on the page, Refine for the owner.
     body = body_summary(v, db)
-    done3d = next((t for t in db.execute(select(BodyTrack).where(BodyTrack.video_id == v.id, BodyTrack.status == "done")
+    # The owner also sees a body the gate turned down, because judging whether the
+    # threshold was fair is impossible without looking at what it refused. Everyone
+    # else sees only a finished one.
+    _seen = ["done", "failed"] if (me and me.id == v.user_id) else ["done"]
+    done3d = next((t for t in db.execute(select(BodyTrack).where(BodyTrack.video_id == v.id,
+                                                                BodyTrack.status.in_(_seen))
                                          .order_by(BodyTrack.created_at.desc())).scalars().all()), None)
     return templates.TemplateResponse(request, "video.html",
                                       {"v": v, "u": v.user, "more": more,
