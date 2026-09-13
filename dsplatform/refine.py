@@ -79,6 +79,22 @@ def body_summary(v: Video, db: Session) -> dict:
     return out
 
 
+def _owns(v, u) -> bool:
+    return bool(u) and v is not None and v.user_id == u.id
+
+
+def _viewable(tr, u, db, token_ok: bool) -> bool:
+    """A finished body follows the video's own rule; one the gate turned down is
+    the owner's alone, so they can see what was refused without it reaching a
+    student. Either way the surface is irrelevant: since the mesh was cut the
+    joints are the body, and has_mesh is false on every new track."""
+    if tr.status == "done":
+        return token_ok or _may_view(tr.video, u, db)
+    if tr.status == "failed":
+        return _owns(tr.video, u)
+    return False
+
+
 def _may_view(v, u, db):
     from .main import _may_view as mv   # the video's own rule, shared with everything else
     return mv(v, u, db)
@@ -120,7 +136,8 @@ def get_body(video_id: int, tier: str = "", u: User | None = Depends(optional_us
     v = db.get(Video, video_id)
     if not _may_view(v, u, db):
         raise HTTPException(404, "No such video")
-    q = select(BodyTrack).where(BodyTrack.video_id == v.id, BodyTrack.status == "done")
+    statuses = ["done", "failed"] if _owns(v, u) else ["done"]
+    q = select(BodyTrack).where(BodyTrack.video_id == v.id, BodyTrack.status.in_(statuses))
     if tier:
         q = q.where(BodyTrack.tier == tier)
     rows = db.execute(q.order_by(BodyTrack.created_at.desc())).scalars().all()
@@ -175,11 +192,7 @@ def body_view(track_id: int, request: Request, t: str = "", u: User | None = Dep
     """The viewer alone, full screen: for the app's web view and for a share."""
     from .main import templates
     tr = db.get(BodyTrack, track_id)
-    # A finished track is viewable whether or not it carries a surface: since the
-    # mesh was cut the joints are the body, and has_mesh is false on every new one.
-    if not tr or tr.status != "done":
-        raise HTTPException(404, "No 3D body here")
-    if not (_view_ok(track_id, t) or _may_view(tr.video, u, db)):
+    if not tr or not _viewable(tr, u, db, _view_ok(track_id, t)):
         raise HTTPException(404, "No 3D body here")
     return templates.TemplateResponse(request, "body3d.html", {"v": tr.video, "track": tr, "files": _files(tr, t)})
 
@@ -189,9 +202,9 @@ def body_file(track_id: int, name: str, t: str = "", u: User | None = Depends(op
               db: Session = Depends(get_db)):
     """A body file, under the video's own access rule; from R2 by redirect in the cloud."""
     tr = db.get(BodyTrack, track_id)
-    if not tr or tr.status != "done" or name not in ("joints.json", "mesh.bin", "meta.json", "turntable.mp4"):
+    if not tr or name not in ("joints.json", "mesh.bin", "meta.json", "turntable.mp4"):
         raise HTTPException(404, "No such file")
-    if not (_view_ok(track_id, t) or _may_view(tr.video, u, db)):
+    if not _viewable(tr, u, db, _view_ok(track_id, t)):
         raise HTTPException(404, "No such file")
     t = tr
     st = get_storage()
@@ -241,6 +254,7 @@ def next_job(worker: str = "", _: str = Depends(_worker), db: Session = Depends(
 @router.post("/v1/refine/{track_id}/result")
 async def post_result(track_id: int, engine: str = Form(...), fps: float = Form(...),
                       dancers: int = Form(...), frames: int = Form(...), seconds: float = Form(0),
+                      rejected: str = Form(""),
                       joints: UploadFile = File(...), meta: UploadFile = File(...),
                       mesh: UploadFile | None = File(None), turntable: UploadFile | None = File(None),
                       _: str = Depends(_worker), db: Session = Depends(get_db)):
@@ -255,7 +269,14 @@ async def post_result(track_id: int, engine: str = Form(...), fps: float = Form(
     if turntable is not None:
         st.put_body(t.id, "turntable.mp4", await turntable.read(), "video/mp4"); t.has_turntable = 1
     t.engine, t.fps, t.dancers, t.frames, t.seconds = engine[:40], fps, dancers, frames, seconds
-    t.status = "done"; t.finished_at = dt.datetime.utcnow()
+    # A body the quality gate turned down is kept, not thrown away. The student
+    # never sees it — failed is failed everywhere they look — but the owner can
+    # open it, which is the only way to judge whether the gate was right. Deleting
+    # the evidence and then asking somebody to rule on it is no way to tune a
+    # threshold.
+    t.status = "failed" if rejected else "done"
+    t.error = rejected[:2000] if rejected else ""
+    t.finished_at = dt.datetime.utcnow()
     db.commit()
     return {"ok": True, "id": t.id}
 
