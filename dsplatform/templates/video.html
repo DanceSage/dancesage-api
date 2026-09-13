@@ -112,7 +112,7 @@
     {% if is_owner and v.has_video and body is defined %}
     {# Refine: a body made after the fact. Refined is free while it costs cents; 3D is the paid plan. #}
     <div class="refine" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
-      {% if not body.get('3d') or body['3d'].status == 'failed' %}<button class="grm" data-refine="3d" style="color:#EC48C8">Make it 3D{% if me.plan != 'pro' %} · paid{% endif %}</button>{% endif %}
+      {% if not body.get('3d') or body['3d'].status == 'failed' %}<button class="grm" data-refine="3d" style="color:#EC48C8">Make it 3D{% if not can_refine %} · paid{% endif %}</button>{% endif %}
       <span class="refine-msg" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
     </div>
     {% endif %}

@@ -174,7 +174,7 @@ def _nav_user(request: Request) -> dict:
 templates = Jinja2Templates(directory=str(HERE / "templates"),
                             context_processors=[_nav_user])
 Base.metadata.create_all(engine)
-from .refine import router as refine_router, body_summary, _files as _body_files   # noqa: E402  (needs the app's helpers)
+from .refine import router as refine_router, body_summary, _files as _body_files, _may_refine   # noqa: E402  (needs the app's helpers)
 app.include_router(refine_router)
 
 
@@ -345,6 +345,7 @@ def video(video_id: int, request: Request, me: User | None = Depends(optional_us
                                       {"v": v, "u": v.user, "more": more,
                                        "can_share": can_share, "lesson": lesson,
                                        "body": body, "body_track": done3d,
+                                       "can_refine": bool(me) and _may_refine(me),
                                        "body_files": _body_files(done3d) if done3d else None,
                                        "is_owner": bool(me) and me.id == v.user_id})
 

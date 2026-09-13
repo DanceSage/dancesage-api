@@ -30,6 +30,16 @@ router = APIRouter()
 # is the paid 3D skeleton.
 TIERS = ("3d",)
 TIER_PLAN = {"3d": "pro"}
+# Paid tiers are held until launch and nothing in this codebase ever sets a plan —
+# there is no billing yet, so every account is "free" and the gate below would
+# refuse everyone, the owner included. REFINE_PRO_HANDLES names the handles that
+# may refine anyway, comma separated, which is how R&D gets to use the thing it is
+# building. It comes out when metering and credits arrive.
+PRO_HANDLES = {h.strip().lstrip("@").lower() for h in os.environ.get("REFINE_PRO_HANDLES", "").split(",") if h.strip()}
+
+
+def _may_refine(u: User) -> bool:
+    return u.plan == "pro" or (u.handle or "").lower() in PRO_HANDLES
 WORKER_TOKEN = os.environ.get("REFINE_WORKER_TOKEN", "")
 RUNPOD_KEY = os.environ.get("RUNPOD_API_KEY", "")
 RUNPOD_GPU = os.environ.get("RUNPOD_GPU", "NVIDIA A40")
@@ -82,7 +92,7 @@ def request_refine(video_id: int, payload: dict | None = None,
     tier = (payload or {}).get("tier") or "3d"
     if tier not in TIERS:
         raise HTTPException(400, f"tier must be one of {TIERS}")
-    if TIER_PLAN[tier] == "pro" and u.plan != "pro":
+    if TIER_PLAN[tier] == "pro" and not _may_refine(u):
         raise HTTPException(402, "The 3D body is part of the paid plan")
     live = db.execute(select(BodyTrack).where(BodyTrack.video_id == v.id, BodyTrack.tier == tier,
                                               BodyTrack.status.in_(("queued", "running")))).scalars().first()
