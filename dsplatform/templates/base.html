@@ -107,12 +107,23 @@
        menu it was two clicks deep behind a face, which is where a feature goes
        to be forgotten. #}
     {% if me %}
-      {# `request is defined` because a template can be rendered without one —
+      {# The same places the phone puts in its tab bar, in the same order, so
+         someone moving between the two is never hunting. Record has no web
+         counterpart — the camera is on the phone — so the web carries three of
+         the four.
+
+         `request is defined` because a template can be rendered without one —
          the page-script tests do exactly that, and an undefined lookup is fatal
          in Jinja rather than merely blank. #}
       {% set here = request.url.path if request is defined else '' %}
+      <a href="/@sage" {% if here == '/@sage' %}class="on"{% endif %}>Sage</a>
       <a href="/lessons" {% if here == '/lessons' %}class="on"{% endif %}>Lessons</a>
-      <a href="/me" {% if here == '/me' %}class="on"{% endif %}>My videos</a>
+      {# The badge says how many; the label says what they are, so the number is
+         not a mystery to a screen reader or to a hovering cursor. #}
+      <a href="/me" {% if here == '/me' %}class="on"{% endif %}
+         {% if offer_count %}title="{{ offer_count }} to accept"{% endif %}>My videos{% if offer_count %}
+        <b aria-label="{{ offer_count }} to accept"
+           style="background:var(--gold);color:#241a06;border-radius:999px;font:700 .66rem var(--mono);padding:1px 6px;margin-left:3px">{{ offer_count }}</b>{% endif %}</a>
     {% endif %}
     <a href="https://dancesage.com/">Home</a>
     <a href="https://dancesage.com/app.html">App</a>
@@ -128,10 +139,10 @@
           {% else %}<span>{{ (me.display_name or me.handle or '?')[0]|upper }}</span>{% endif %}
           {% if offer_count %}<b style="position:absolute;top:-4px;right:-6px;background:var(--gold);color:#241a06;border-radius:999px;font:700 .66rem var(--mono);padding:1px 6px;line-height:1.4">{{ offer_count }}</b>{% endif %}
         </a>
+        {# My videos and Lessons are tabs now, so the menu holds only what a tab
+           should not: the page other people see, and the way out. #}
         <div class="me-menu" id="meMenu">
           <div class="hd">@{{ me.handle }}</div>
-          <a href="/me">My profile{% if offer_count %} <span style="color:var(--gold)">· {{ offer_count }} to accept</span>{% endif %}</a>
-          <a href="/lessons">My lessons</a>
           <a href="/@{{ me.handle }}">My public profile</a>
           <a class="out" href="/signout">Sign out</a>
         </div>
