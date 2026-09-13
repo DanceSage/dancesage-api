@@ -287,8 +287,7 @@ def video(video_id: int, request: Request, me: User | None = Depends(optional_us
         lesson = None
     # The refined bodies, if any: the 3D mode on the page, Refine for the owner.
     body = body_summary(v, db)
-    done3d = next((t for t in db.execute(select(BodyTrack).where(BodyTrack.video_id == v.id, BodyTrack.status == "done",
-                                                                  BodyTrack.has_mesh == 1)
+    done3d = next((t for t in db.execute(select(BodyTrack).where(BodyTrack.video_id == v.id, BodyTrack.status == "done")
                                          .order_by(BodyTrack.created_at.desc())).scalars().all()), None)
     return templates.TemplateResponse(request, "video.html",
                                       {"v": v, "u": v.user, "more": more,

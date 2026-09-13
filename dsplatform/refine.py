@@ -119,7 +119,7 @@ def get_body(video_id: int, tier: str = "", u: User | None = Depends(optional_us
     return {"summary": body_summary(v, db),
             "track": {"id": t.id, "tier": t.tier, "engine": t.engine, "fps": t.fps,
                       "dancers": t.dancers, "frames": t.frames, "files": files,
-                      "view_url": f"/body/{t.id}/view?t={token}" if t.has_mesh else None}}
+                      "view_url": f"/body/{t.id}/view?t={token}"}}
 
 
 def _view_token(track_id: int, expires: int) -> str:
@@ -149,7 +149,9 @@ def body_view(track_id: int, request: Request, t: str = "", u: User | None = Dep
     """The viewer alone, full screen: for the app's web view and for a share."""
     from .main import templates
     tr = db.get(BodyTrack, track_id)
-    if not tr or tr.status != "done" or not tr.has_mesh:
+    # A finished track is viewable whether or not it carries a surface: since the
+    # mesh was cut the joints are the body, and has_mesh is false on every new one.
+    if not tr or tr.status != "done":
         raise HTTPException(404, "No 3D body here")
     if not (_view_ok(track_id, t) or _may_view(tr.video, u, db)):
         raise HTTPException(404, "No 3D body here")

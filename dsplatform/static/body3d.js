@@ -45,16 +45,22 @@ window.mountBody3D = async function (root, files, opts = {}) {
   new ResizeObserver(resize).observe(root); resize();
 
   const meta = await (await fetch(files.meta, { credentials: 'same-origin' })).json();
-  const bytes = new Uint8Array(await (await fetch(files.mesh, { credentials: 'same-origin' })).arrayBuffer());
-  const nf = meta.faces * 3;
-  c = { m: meta, faces: new Uint32Array(bytes.buffer, bytes.byteOffset, nf),
-        verts: new Uint16Array(bytes.buffer, bytes.byteOffset + nf * 4, meta.people * meta.frames * meta.verts * 3) };
-  for (let p = 0; p < meta.people; p++) {
-    const g = new THREE.BufferGeometry();
-    g.setIndex(new THREE.BufferAttribute(c.faces, 1));
-    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(meta.verts * 3), 3));
-    const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: COLOURS[p % 2], roughness: 0.65, metalness: 0.05 }));
-    rig.add(mesh); meshes.push(mesh);
+  // The surface is optional now. Since the mesh was cut a track is joints alone,
+  // and its meta carries no faces, verts or bounds — so everything the viewer
+  // needs about size and centre comes from the joints themselves below.
+  c = { m: meta };
+  if (files.mesh && meta.verts) {
+    const bytes = new Uint8Array(await (await fetch(files.mesh, { credentials: 'same-origin' })).arrayBuffer());
+    const nf = meta.faces * 3;
+    c.faces = new Uint32Array(bytes.buffer, bytes.byteOffset, nf);
+    c.verts = new Uint16Array(bytes.buffer, bytes.byteOffset + nf * 4, meta.people * meta.frames * meta.verts * 3);
+    for (let p = 0; p < meta.people; p++) {
+      const g = new THREE.BufferGeometry();
+      g.setIndex(new THREE.BufferAttribute(c.faces, 1));
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(meta.verts * 3), 3));
+      const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: COLOURS[p % 2], roughness: 0.65, metalness: 0.05 }));
+      rig.add(mesh); meshes.push(mesh);
+    }
   }
   try {
     joints = await (await fetch(files.joints, { credentials: 'same-origin' })).json();
@@ -69,8 +75,32 @@ window.mountBody3D = async function (root, files, opts = {}) {
       sk.push({ grp, dots, limbs });
     }
   } catch (e) { joints = null; skeleton = false; }
-  const lo = meta.lo, hi = meta.hi; c.centre = [(lo[0]+hi[0])/2, (lo[1]+hi[1])/2, (lo[2]+hi[2])/2];
-  c.size = Math.max(hi[1]-lo[1], (hi[0]-lo[0]) * root.clientHeight / Math.max(1, root.clientWidth));
+
+  // The mesh brought its own bounds; a skeleton-only track is measured here, in
+  // the same flipped frame the drawing uses, so the figure lands on the grid.
+  let lo = meta.lo, hi = meta.hi;
+  if (!lo || !hi) {
+    lo = [Infinity, Infinity, Infinity]; hi = [-Infinity, -Infinity, -Infinity];
+    for (const person of (joints ? joints.people : [])) {
+      for (const f of person) {
+        if (!f) continue;
+        for (const j of f) {
+          const v = [j[0], -j[1], -j[2]];
+          for (let i = 0; i < 3; i++) { if (v[i] < lo[i]) lo[i] = v[i]; if (v[i] > hi[i]) hi[i] = v[i]; }
+        }
+      }
+    }
+    if (!isFinite(lo[0])) { lo = [-0.5, -0.9, -0.5]; hi = [0.5, 0.9, 0.5]; }
+    // These bounds were measured after the same y/z flip the drawing applies, so
+    // they are already in the drawn frame and the centre is taken from them
+    // exactly as the mesh path takes it from meta.
+    c.centre = [(lo[0]+hi[0])/2, (lo[1]+hi[1])/2, (lo[2]+hi[2])/2];
+    c.size = Math.max(hi[1]-lo[1], (hi[0]-lo[0]) * root.clientHeight / Math.max(1, root.clientWidth));
+    c.m = Object.assign({ people: joints ? joints.people.length : 1 }, meta, { lo, hi });
+  } else {
+    c.centre = [(lo[0]+hi[0])/2, (lo[1]+hi[1])/2, (lo[2]+hi[2])/2];
+    c.size = Math.max(hi[1]-lo[1], (hi[0]-lo[0]) * root.clientHeight / Math.max(1, root.clientWidth));
+  }
   const grid = new THREE.GridHelper(4, 16, 0x2A2F37, 0x1E232A); grid.position.y = (lo[1]-c.centre[1]) - 0.02; rig.add(grid);
   $('.b3-scrub').max = meta.frames - 1; $('.b3-status').hidden = true;
 
@@ -95,7 +125,7 @@ window.mountBody3D = async function (root, files, opts = {}) {
   function setFrame() {
     const m = c.m, n = m.verts * 3, [cx, cy, cz] = c.centre;
     if (joints) setSkeleton();
-    for (let p = 0; p < m.people; p++) {
+    for (let p = 0; p < meshes.length; p++) {
       if (skeleton) continue;
       const dst = meshes[p].geometry.attributes.position.array, off = (p * m.frames + frame) * n;
       for (let i = 0; i < n; i += 3) {
@@ -120,10 +150,13 @@ window.mountBody3D = async function (root, files, opts = {}) {
     last = now; requestAnimationFrame(tick);
   }
   $$('.b3-views button[data-yaw]').forEach(b => b.onclick = () => { yaw = b.dataset.yaw * Math.PI / 180; });
-  const modeBtn = $('.b3-mode'); modeBtn.hidden = !joints;
+  // Body/Skeleton only means something when both exist.
+  const modeBtn = $('.b3-mode'); modeBtn.hidden = !joints || !meshes.length;
   const showMode = () => { modeBtn.textContent = skeleton ? 'Body' : 'Skeleton'; };
   modeBtn.onclick = () => { skeleton = !skeleton; showMode(); frame = -1; };
-  if (!joints) skeleton = false; showMode();
+  if (!joints) skeleton = false;
+  if (!meshes.length) skeleton = true;      // joints are all there is
+  showMode();
   $('.b3-play').onclick = e => { playing = !playing; e.currentTarget.innerHTML = playing ? '&#10074;&#10074;' : '&#9654;'; };
   $('.b3-scrub').oninput = e => { playing = false; $('.b3-play').innerHTML = '&#9654;'; pos = +e.target.value; frame = -1; };
   $('.b3-speed').oninput = e => { rate = +e.target.value; };
