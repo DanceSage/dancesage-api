@@ -97,6 +97,11 @@ def request_refine(video_id: int, payload: dict | None = None,
     live = db.execute(select(BodyTrack).where(BodyTrack.video_id == v.id, BodyTrack.tier == tier,
                                               BodyTrack.status.in_(("queued", "running")))).scalars().first()
     if live:
+        # Asking again for a job that is already waiting is how someone says the
+        # first attempt went nowhere — so try the worker again rather than hand
+        # back the same queued row. Renting a pod can fail (a bad key, no card in
+        # the region), and without this a job stranded by that never recovers.
+        _wake_worker(db)
         return {"id": live.id, "status": live.status, "tier": tier}
     t = BodyTrack(video_id=v.id, tier=tier)
     db.add(t); db.commit(); db.refresh(t)
@@ -265,6 +270,12 @@ def queue_state(_: str = Depends(_worker), db: Session = Depends(get_db)):
 # ── starting the GPU when there is work ────────────────────────────────────
 
 def _runpod(query: str) -> dict:
+    # Headers go out as latin-1, so a key carrying a stray character — an ellipsis
+    # from a truncated copy-paste is the one we hit — dies in the codec with a
+    # message about byte ordinals that says nothing about the key.
+    if not RUNPOD_KEY.isascii():
+        raise RuntimeError("RUNPOD_API_KEY has a non-ASCII character in it — it was probably "
+                           "copied from somewhere that shortened it")
     # RunPod refuses Python's default user agent with a 403; say who we are.
     req = urllib.request.Request("https://api.runpod.io/graphql", data=json.dumps({"query": query}).encode(),
                                  headers={"Content-Type": "application/json", "Authorization": f"Bearer {RUNPOD_KEY}",
