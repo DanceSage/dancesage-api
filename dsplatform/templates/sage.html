@@ -14,9 +14,9 @@
       haven't got one.</p>
     <p class="sub">{{ u.bio }}</p>
     <div class="sage-chips">
-      <span class="chip">{{ total }} classes</span>
       <span class="chip">{{ folders|length }} courses</span>
-      <span class="chip">{{ u.styles }}</span>
+      <span class="chip">{{ total }} open to you</span>
+      {% if locked %}<span class="chip">{{ locked }} with a subscription</span>{% endif %}
       <span class="chip">{{ u.levels }}</span>
     </div>
   </div>
@@ -30,8 +30,9 @@
 </ol>
 
 <h2 class="sage-h2">The courses</h2>
-<p class="sub" style="margin:0 0 14px">Each one starts at the first basic and goes up. Open a
-  course to see its classes by level.</p>
+<p class="sub" style="margin:0 0 14px">Every course starts at the first basic and goes up. The
+  first classes of each are free to take now{% if locked %} — the rest of a course opens when you
+  subscribe to that dance{% endif %}. Add any class to your Lessons and dance it.</p>
 
 {% macro vcard(v) %}
   <a class="card" href="/v/{{ v.id }}">
@@ -49,8 +50,8 @@
 <details class="series"{% if loop.first %} open{% endif %}>
   <summary>
     <span class="ttl">{{ f.name }}</span>
-    <span class="cnt">{{ f.videos|length }} class{{ '' if f.videos|length == 1 else 'es' }}
-      &middot; {% for lv in level_order if f.videos|selectattr('level','equalto',lv)|list %}{{ lv }}{{ '' if loop.last else ', ' }}{% endfor %}</span>
+    <span class="cnt">{{ f.open }} free
+      {%- if f.held > f.open %} &middot; {{ f.held - f.open }} more with a subscription{% endif %}</span>
   </summary>
   {% for lv in level_order %}{% set inside = f.videos|selectattr('level','equalto',lv)|sort(attribute='title') %}{% if inside %}
   <div class="level-head">{{ lv }}</div>
@@ -58,6 +59,14 @@
   {% endif %}{% endfor %}
 </details>
 {% endfor %}
+
+{% if folders and locked %}
+{# No payments yet, so no button that does nothing. The page says where the rest
+   is and stops there. #}
+<p class="sage-locked">{{ locked }} more classes are waiting across the four courses.
+  Subscriptions are not open yet — the free classes above are the whole of Sage for now, and
+  they are real classes, not clips.</p>
+{% endif %}
 
 {% if loose %}
 <div class="level-head" style="margin-top:22px">Single classes</div>
@@ -88,6 +97,9 @@
   .sage-how b{display:block;font-size:.98rem;margin-bottom:3px}
   .sage-how span{color:var(--muted);font-size:.87rem;line-height:1.5}
   .sage-h2{font-size:1.05rem;margin:0 0 4px}
+  .sage-locked{max-width:680px;margin:16px 0 0;padding:14px 16px;border-radius:13px;
+    background:var(--panel2);border:1px solid var(--line);border-left:2px solid var(--gold);
+    color:var(--muted);font-size:.9rem;line-height:1.55}
   @media(max-width:560px){
     .sage-hero{gap:14px}
     .sav{width:64px;height:64px}

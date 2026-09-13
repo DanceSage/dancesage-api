@@ -227,17 +227,23 @@ def sage_page(request: Request, me: User | None = Depends(optional_user),
         raise HTTPException(404, "Sage is not here yet")
     vids = sorted([v for v in u.videos if v.reply_to is None and _may_view(v, me, db)],
                   key=lambda v: v.created_at, reverse=True)
-    folders, filed = [], set()
+    # A course counts every class it holds, not only the ones this reader may
+    # open: three of each course are samples and the rest wait behind a
+    # subscription, so the page can only be honest if it knows both numbers.
+    folders, filed, locked = [], set(), 0
     for series in db.execute(select(Series).where(Series.owner_id == u.id)
                              .order_by(Series.created_at)).scalars().all():
-        inside = [i.video for i in series.items if i.video in vids]
-        if inside:
-            folders.append({"name": series.name, "videos": inside})
+        held = [i.video for i in series.items if i.video is not None]
+        inside = [v for v in held if v in vids]
+        if held:
+            folders.append({"name": series.name, "videos": inside,
+                            "open": len(inside), "held": len(held)})
+            locked += len(held) - len(inside)
             filed.update(v.id for v in inside)
     return templates.TemplateResponse(request, "sage.html",
                                       {"u": u, "folders": folders,
                                        "loose": [v for v in vids if v.id not in filed],
-                                       "total": len(vids)})
+                                       "total": len(vids), "locked": locked})
 
 
 @app.get("/@{handle}", response_class=HTMLResponse)
