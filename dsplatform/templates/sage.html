@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Sage · the teacher built in · Dance Sage{% endblock %}
+{% block body %}
+{% include '_tabs.html' %}
+
+{# Who Sage is comes before what Sage posted. A dancer with no teacher is the
+   whole reason this account exists, and a wall of 180 classes does not say so. #}
+<section class="sage-hero">
+  {% if u.avatar_key %}<img class="sav" src="/avatar/{{ u.handle }}.jpg" alt="">
+  {% else %}<div class="sav ph">S</div>{% endif %}
+  <div>
+    <h1>Sage</h1>
+    <p class="claim">Dance Sage's own teacher — the one you dance with when you
+      haven't got one.</p>
+    <p class="sub">{{ u.bio }}</p>
+    <div class="sage-chips">
+      <span class="chip">{{ total }} classes</span>
+      <span class="chip">{{ folders|length }} courses</span>
+      <span class="chip">{{ u.styles }}</span>
+      <span class="chip">{{ u.levels }}</span>
+    </div>
+  </div>
+</section>
+
+<ol class="sage-how">
+  <li><b>Pick a class</b><span>Open it, watch the move, add it to your Lessons.</span></li>
+  <li><b>Dance it</b><span>Sage's skeleton plays over your camera and you dance inside it.</span></li>
+  <li><b>Hear what to fix</b><span>A score, and the two corrections that matter, spoken aloud
+    the moment you stop. Nothing leaves your phone.</span></li>
+</ol>
+
+<h2 class="sage-h2">The courses</h2>
+<p class="sub" style="margin:0 0 14px">Each one starts at the first basic and goes up. Open a
+  course to see its classes by level.</p>
+
+{% macro vcard(v) %}
+  <a class="card" href="/v/{{ v.id }}">
+    {% if v.thumb_key %}<img src="/thumb/{{ v.id }}.jpg" alt="" loading="lazy">
+    {% else %}<div class="noimg">skeleton</div>{% endif %}
+    <div class="meta">
+      <span class="t">{{ v.title }}</span>
+      <span class="d">{{ v.level or 'All levels' }}{% if v.dancers > 1 %} &middot; couple{% else %} &middot; solo{% endif %}</span>
+    </div>
+  </a>
+{% endmacro %}
+
+{% set level_order = ['Beginner', 'Intermediate', 'Advanced', 'All levels'] %}
+{% for f in folders %}
+<details class="series"{% if loop.first %} open{% endif %}>
+  <summary>
+    <span class="ttl">{{ f.name }}</span>
+    <span class="cnt">{{ f.videos|length }} class{{ '' if f.videos|length == 1 else 'es' }}
+      &middot; {% for lv in level_order if f.videos|selectattr('level','equalto',lv)|list %}{{ lv }}{{ '' if loop.last else ', ' }}{% endfor %}</span>
+  </summary>
+  {% for lv in level_order %}{% set inside = f.videos|selectattr('level','equalto',lv)|sort(attribute='title') %}{% if inside %}
+  <div class="level-head">{{ lv }}</div>
+  <div class="grid">{% for v in inside %}{{ vcard(v) }}{% endfor %}</div>
+  {% endif %}{% endfor %}
+</details>
+{% endfor %}
+
+{% if loose %}
+<div class="level-head" style="margin-top:22px">Single classes</div>
+<div class="grid">{% for v in loose|sort(attribute='title') %}{{ vcard(v) }}{% endfor %}</div>
+{% endif %}
+
+{% if not folders and not loose %}
+<p class="sub">Sage has no classes yet.</p>
+{% endif %}
+
+<style>
+  .sage-hero{display:flex;gap:20px;align-items:flex-start;margin:0 0 24px;max-width:760px}
+  .sav{width:92px;height:92px;border-radius:50%;object-fit:cover;flex:none;
+    border:1px solid rgba(245,208,111,.5)}
+  .sav.ph{background:var(--panel-strong);display:grid;place-items:center;
+    font:700 2rem var(--font-body);color:var(--gold)}
+  .sage-hero h1{font-size:1.6rem;margin:0 0 6px}
+  .sage-hero .claim{margin:0 0 9px;font-size:1.02rem;color:var(--text);max-width:46ch}
+  .sage-hero .sub{margin:0 0 12px;max-width:56ch}
+  .sage-chips{display:flex;flex-wrap:wrap;gap:7px}
+  .sage-how{list-style:none;counter-reset:step;display:grid;gap:10px;padding:0;
+    margin:0 0 32px;max-width:760px}
+  @media(min-width:760px){ .sage-how{grid-template-columns:repeat(3,1fr)} }
+  .sage-how li{counter-increment:step;background:var(--panel);border:1px solid var(--line);
+    border-radius:13px;padding:14px 16px}
+  .sage-how li::before{content:counter(step);display:block;font:700 .7rem var(--mono);
+    color:var(--gold);margin-bottom:6px}
+  .sage-how b{display:block;font-size:.98rem;margin-bottom:3px}
+  .sage-how span{color:var(--muted);font-size:.87rem;line-height:1.5}
+  .sage-h2{font-size:1.05rem;margin:0 0 4px}
+  @media(max-width:560px){
+    .sage-hero{gap:14px}
+    .sav{width:64px;height:64px}
+  }
+</style>
+{% endblock %}

@@ -212,6 +212,34 @@ def city(city: str, request: Request, style: str = "", level: str = "",
     })
 
 
+@app.get("/sage", response_class=HTMLResponse)
+def sage_page(request: Request, me: User | None = Depends(optional_user),
+              db: Session = Depends(get_db)):
+    """Sage's own page, not a dancer's profile.
+
+    Sage is the teacher built into Dance Sage, for the dancer who has not got one
+    — so the page has to say that before it shows a single class. The profile
+    template says who somebody is and then lists what they posted, which for 180
+    classes reads as a wall of videos and explains nothing.
+    """
+    u = db.execute(select(User).where(User.handle == "sage")).scalar_one_or_none()
+    if not u:
+        raise HTTPException(404, "Sage is not here yet")
+    vids = sorted([v for v in u.videos if v.reply_to is None and _may_view(v, me, db)],
+                  key=lambda v: v.created_at, reverse=True)
+    folders, filed = [], set()
+    for series in db.execute(select(Series).where(Series.owner_id == u.id)
+                             .order_by(Series.created_at)).scalars().all():
+        inside = [i.video for i in series.items if i.video in vids]
+        if inside:
+            folders.append({"name": series.name, "videos": inside})
+            filed.update(v.id for v in inside)
+    return templates.TemplateResponse(request, "sage.html",
+                                      {"u": u, "folders": folders,
+                                       "loose": [v for v in vids if v.id not in filed],
+                                       "total": len(vids)})
+
+
 @app.get("/@{handle}", response_class=HTMLResponse)
 def profile(handle: str, request: Request, me: User | None = Depends(optional_user),
             db: Session = Depends(get_db)):
