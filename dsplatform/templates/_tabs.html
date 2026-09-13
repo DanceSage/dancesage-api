@@ -1,0 +1,15 @@
+{# The three places that are yours, as rectangles inside the page rather than
+   links in the header — the way a profile carries its own tabs. The one you are
+   on is marked and not a link, so the row always says where you are. #}
+{% set here = request.url.path if request is defined else '' %}
+<nav class="mytabs" aria-label="Your pages">
+  {% for path, label in [('/me', 'My videos'), ('/lessons', 'Lessons'), ('/@sage', 'Sage')] %}
+    {% if here == path %}
+      <span class="now" aria-current="page">{{ label }}{% if path == '/me' and offer_count %}
+        <b title="{{ offer_count }} to accept">{{ offer_count }}</b>{% endif %}</span>
+    {% else %}
+      <a href="{{ path }}">{{ label }}{% if path == '/me' and offer_count %}
+        <b title="{{ offer_count }} to accept">{{ offer_count }}</b>{% endif %}</a>
+    {% endif %}
+  {% endfor %}
+</nav>

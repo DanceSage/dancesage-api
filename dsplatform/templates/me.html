@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}My profile · Dance Sage{% endblock %}
 {% block body %}
+{% include '_tabs.html' %}
 <div class="who">
   {% if u.avatar_key %}<img class="av" src="/avatar/{{ u.handle }}.jpg" alt="">
   {% else %}<div class="av ph">{{ (u.display_name or '?')[0] }}</div>{% endif %}

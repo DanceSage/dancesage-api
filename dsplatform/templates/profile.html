@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{{ u.display_name }} · Dance Sage{% endblock %}
 {% block body %}
+{# Sage is one of the three, so the row belongs here too — but only on Sage's
+   page. On another dancer's profile it would be your furniture in their room. #}
+{% if me and u.handle == 'sage' %}{% include '_tabs.html' %}{% endif %}
 <div class="who">
   {% if u.avatar_key %}
   <img class="av" src="/avatar/{{ u.handle }}.jpg" alt="{{ u.display_name }}">
