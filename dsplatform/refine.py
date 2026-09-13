@@ -120,8 +120,15 @@ def get_body(video_id: int, tier: str = "", u: User | None = Depends(optional_us
     if tier:
         q = q.where(BodyTrack.tier == tier)
     rows = db.execute(q.order_by(BodyTrack.created_at.desc())).scalars().all()
+    summary = body_summary(v, db)
+    # This endpoint is what the app and the video page poll while a body is being
+    # made, so it is the natural place to notice that nothing is making it. If a
+    # job is still waiting, try to put a worker under it — the call is rate
+    # limited and returns at once when a pod is already running.
+    if any(b.get("status") in ("queued", "running") for b in summary.values()):
+        _wake_worker(db)
     if not rows:
-        return {"summary": body_summary(v, db), "track": None}
+        return {"summary": summary, "track": None}
     t = sorted(rows, key=lambda r: r.created_at, reverse=True)[0]
     files = {"joints": f"/body/{t.id}/joints.json", "meta": f"/body/{t.id}/meta.json"}
     if t.has_mesh:
@@ -131,7 +138,7 @@ def get_body(video_id: int, tier: str = "", u: User | None = Depends(optional_us
     import time
     from .main import PLAYBACK_TTL
     token = _view_token(t.id, int(time.time()) + PLAYBACK_TTL)
-    return {"summary": body_summary(v, db),
+    return {"summary": summary,
             "track": {"id": t.id, "tier": t.tier, "engine": t.engine, "fps": t.fps,
                       "dancers": t.dancers, "frames": t.frames, "files": files,
                       "view_url": f"/body/{t.id}/view?t={token}"}}
@@ -284,6 +291,9 @@ def _runpod(query: str) -> dict:
         return json.loads(r.read())
 
 
+_last_wake = 0.0
+
+
 def _wake_worker(db: Session) -> None:
     """A GPU pod running the worker, if none is running. From our own image it
     starts in under a minute; from the bare base it bootstraps itself from
@@ -291,6 +301,13 @@ def _wake_worker(db: Session) -> None:
     itself when the queue has been empty for a while, so idle time costs nothing."""
     if not (RUNPOD_KEY and os.environ.get("REFINE_WORKER_TOKEN")):
         return
+    # Callers now include a polling page, so this is asked often. One attempt a
+    # minute is plenty: renting a pod takes longer than that to show up anyway.
+    global _last_wake
+    import time as _time
+    if _time.time() - _last_wake < 60:
+        return
+    _last_wake = _time.time()
     try:
         pods = _runpod('{ myself { pods { id name desiredStatus } } }')["data"]["myself"]["pods"]
         if any(p["name"] == "dancesage-refine-worker" and p["desiredStatus"] == "RUNNING" for p in pods):
