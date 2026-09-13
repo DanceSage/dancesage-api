@@ -34,7 +34,17 @@ WORKER_TOKEN = os.environ.get("REFINE_WORKER_TOKEN", "")
 RUNPOD_KEY = os.environ.get("RUNPOD_API_KEY", "")
 RUNPOD_GPU = os.environ.get("RUNPOD_GPU", "NVIDIA A40")
 RUNPOD_VOLUME = os.environ.get("RUNPOD_VOLUME_ID", "")         # keeps the 24 GB of weights between pods
-RUNPOD_IMAGE = os.environ.get("RUNPOD_IMAGE", "pytorch/pytorch:2.7.1-cuda11.8-cudnn9-devel")
+# The bare base a pod used to bootstrap itself on, cloning the repo and building
+# the environment for the best part of twenty minutes, every time. Our own image
+# has all of it already, so when RUNPOD_IMAGE is anything else we let the image's
+# own start.sh run instead of overriding it.
+BARE_BASE = "pytorch/pytorch:2.7.1-cuda11.8-cudnn9-devel"
+RUNPOD_IMAGE = os.environ.get("RUNPOD_IMAGE", BARE_BASE)
+# Our image is private, because the worker and the fitting scripts are in it.
+# RunPod pulls it with a credential saved in the account; this is that credential's id.
+RUNPOD_REGISTRY_AUTH = os.environ.get("RUNPOD_REGISTRY_AUTH_ID", "")
+# Room for the image and, until a weights volume exists, the 24 GB it fetches.
+RUNPOD_DISK_GB = int(os.environ.get("RUNPOD_DISK_GB", "0") or 0)
 PLATFORM_BASE = os.environ.get("PLATFORM_BASE", "https://dancesage-api.fly.dev")
 # The worker bootstraps itself on a bare PyTorch pod from this script: no image to build.
 BOOTSTRAP = (os.path.join(os.path.dirname(__file__), "refine_bootstrap.sh"))
@@ -252,28 +262,42 @@ def _runpod(query: str) -> dict:
 
 
 def _wake_worker(db: Session) -> None:
-    """A GPU pod running the worker, if none is running. It bootstraps itself from
-    refine_bootstrap.sh and stops itself when the queue has been empty for a
-    while, so idle time costs nothing."""
+    """A GPU pod running the worker, if none is running. From our own image it
+    starts in under a minute; from the bare base it bootstraps itself from
+    refine_bootstrap.sh and takes the best part of twenty. Either way it stops
+    itself when the queue has been empty for a while, so idle time costs nothing."""
     if not (RUNPOD_KEY and os.environ.get("REFINE_WORKER_TOKEN")):
         return
     try:
         pods = _runpod('{ myself { pods { id name desiredStatus } } }')["data"]["myself"]["pods"]
         if any(p["name"] == "dancesage-refine-worker" and p["desiredStatus"] == "RUNNING" for p in pods):
             return
-        import base64
-        script = base64.b64encode(open(BOOTSTRAP, "rb").read()).decode()
+        own_image = RUNPOD_IMAGE != BARE_BASE
         env = {"PLATFORM_BASE": PLATFORM_BASE, "REFINE_WORKER_TOKEN": os.environ.get("REFINE_WORKER_TOKEN", ""),
                "HF_TOKEN": os.environ.get("HF_TOKEN", ""), "RUNPOD_API_KEY": RUNPOD_KEY,
-               "GIT_TOKEN": os.environ.get("GIT_TOKEN", ""), "WORKER_REF": os.environ.get("WORKER_REF", "refine"),
-               "IDLE_MINUTES": os.environ.get("REFINE_IDLE_MINUTES", "10"), "BOOTSTRAP_B64": script}
+               "IDLE_MINUTES": os.environ.get("REFINE_IDLE_MINUTES", "10")}
+        extras = ""
+        if own_image:
+            # Everything the bootstrap used to install is baked in, and the image's
+            # CMD is start.sh: fetch the gated weights if they are not on a volume,
+            # then run the worker. So no dockerArgs, and no repo token to hand out.
+            disk = RUNPOD_DISK_GB or 100      # the image, plus 24 GB of weights with no volume
+        else:
+            import base64
+            env["BOOTSTRAP_B64"] = base64.b64encode(open(BOOTSTRAP, "rb").read()).decode()
+            env["GIT_TOKEN"] = os.environ.get("GIT_TOKEN", "")
+            env["WORKER_REF"] = os.environ.get("WORKER_REF", "refine")
+            args = json.dumps('bash -c "echo $BOOTSTRAP_B64 | base64 -d > /bootstrap.sh && bash /bootstrap.sh"')
+            extras += f', dockerArgs: {args}'
+            disk = RUNPOD_DISK_GB or 60
+        if RUNPOD_REGISTRY_AUTH:
+            extras += f', containerRegistryAuthId: "{RUNPOD_REGISTRY_AUTH}"'
         env_gql = ", ".join(f'{{key: {json.dumps(k)}, value: {json.dumps(v)}}}' for k, v in env.items())
-        args = json.dumps('bash -c "echo $BOOTSTRAP_B64 | base64 -d > /bootstrap.sh && bash /bootstrap.sh"')
         def deploy(extra):
             return _runpod('mutation { podFindAndDeployOnDemand(input: {gpuCount: 1, '
                            f'gpuTypeId: "{RUNPOD_GPU}", name: "dancesage-refine-worker", imageName: "{RUNPOD_IMAGE}", '
-                           f'containerDiskInGb: 60, volumeInGb: 0, minVcpuCount: 8, minMemoryInGb: 32, dockerArgs: {args}, '
-                           f'env: [{env_gql}]{extra}}}) {{ id }} }}')
+                           f'containerDiskInGb: {disk}, volumeInGb: 0, minVcpuCount: 8, minMemoryInGb: 32, '
+                           f'env: [{env_gql}]{extras}{extra}}}) {{ id }} }}')
         # With the weights volume when its data centre has a card; otherwise anywhere,
         # and the pod fetches the weights itself (ten minutes more).
         r = deploy(f', networkVolumeId: "{RUNPOD_VOLUME}"') if RUNPOD_VOLUME else {"errors": True}

@@ -11,3 +11,7 @@ ENV/
 .env
 storage/
 dancesage.db
+
+# Ultralytics weights are AGPL and nothing here uses them.
+yolov8*.pt
+yolo11*.pt
