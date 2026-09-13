@@ -59,7 +59,8 @@ def test_refine_goes_through_the_queue_to_the_worker_and_back():
     job_id = r.json()["id"]
     assert client.post(f"/v1/videos/{vid}/refine", json={"tier": "3d"}, headers=hdr(maya)).json()["id"] == job_id
     assert client.get(f"/v1/videos/{vid}/body", headers=hdr(maya)).json() == {
-        "summary": {"3d": {"id": job_id, "status": "queued", "fps": 0, "dancers": 0, "has_mesh": False, "has_turntable": False}},
+        "summary": {"3d": {"id": job_id, "status": "queued", "fps": 0, "dancers": 0, "has_mesh": False,
+                           "has_turntable": False, "error": ""}},
         "track": None}
     # the card says so too
     me = client.get("/v1/me", headers=hdr(maya)).json()
