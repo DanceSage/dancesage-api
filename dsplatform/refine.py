@@ -266,6 +266,20 @@ def post_fail(track_id: int, payload: dict, _: str = Depends(_worker), db: Sessi
     return {"ok": True}
 
 
+@router.post("/v1/refine/log")
+def worker_log(payload: dict, _: str = Depends(_worker)):
+    """A line from a worker, into the platform's own log.
+
+    A pod that dies before it can take a job used to be invisible: its output
+    lives in a console we cannot reach from here, so a worker that crash-looped
+    on a bad token looked exactly like one that was still pulling its image. Now
+    it says so, where we are already looking.
+    """
+    who = str(payload.get("worker") or "?")[:40]
+    print(f"refine-worker[{who}]: {str(payload.get('msg') or '')[:800]}", flush=True)
+    return {"ok": True}
+
+
 @router.get("/v1/refine/queue")
 def queue_state(_: str = Depends(_worker), db: Session = Depends(get_db)):
     """How much is waiting — the worker uses it to decide when to shut itself down."""
