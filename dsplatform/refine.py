@@ -75,7 +75,7 @@ def body_summary(v: Video, db: Session) -> dict:
                        # Why it failed, for the person who asked for it and for us:
                        # a failure whose reason lives only in a column nobody reads
                        # is the same as no reason at all.
-                       "error": (t.error or "")[:400] if t.status == "failed" else ""}
+                       "error": (t.error or "")[:2000] if t.status == "failed" else ""}
     return out
 
 
