@@ -71,7 +71,11 @@ def body_summary(v: Video, db: Session) -> dict:
         if t.tier in out:
             continue
         out[t.tier] = {"id": t.id, "status": t.status, "fps": t.fps, "dancers": t.dancers,
-                       "has_mesh": bool(t.has_mesh), "has_turntable": bool(t.has_turntable)}
+                       "has_mesh": bool(t.has_mesh), "has_turntable": bool(t.has_turntable),
+                       # Why it failed, for the person who asked for it and for us:
+                       # a failure whose reason lives only in a column nobody reads
+                       # is the same as no reason at all.
+                       "error": (t.error or "")[:400] if t.status == "failed" else ""}
     return out
 
 
