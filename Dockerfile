@@ -16,10 +16,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY dsplatform ./dsplatform
 
-# DATABASE_URL is a secret now that it carries Postgres credentials, so it is
-# set on the app rather than baked in. With it unset the code falls back to a
-# local SQLite file, which is what a developer wants.
-ENV STORAGE_BACKEND=r2
+# SQLite lives on a mounted volume, not in the image — a machine can be replaced
+# at any time and the database has to survive that. A Postgres URL set as a
+# secret overrides this; db.py reads either.
+ENV DATABASE_URL=sqlite:////data/dancesage.db \
+    STORAGE_BACKEND=r2
 
 RUN useradd --create-home appuser && mkdir -p /data && chown appuser /data
 

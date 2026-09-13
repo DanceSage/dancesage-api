@@ -10,7 +10,9 @@ primary_region = "yyz"
 [build]
 
 [env]
-  # DATABASE_URL is a secret: `fly secrets set DATABASE_URL=postgresql://...`
+  # SQLite on the volume. A Postgres URL set as a secret overrides this, which is
+  # how the two are swapped: the code reads either.
+  DATABASE_URL = "sqlite:////data/dancesage.db"
   STORAGE_BACKEND = "r2"
   FIREBASE_PROJECT_ID = "dancesage-61d8e"
 
@@ -21,9 +23,8 @@ primary_region = "yyz"
 [http_service]
   internal_port = 8000
   force_https = true
-  # Never scale to zero: a cold start on every request would make the app feel
-  # broken. The database no longer lives on this machine, but the volume still
-  # holds the SQLite file it was migrated from — kept as the way back.
+  # Never scale to zero: the machine holds the only copy of the database,
+  # and a cold start on every request would make the app feel broken.
   auto_stop_machines = false
   auto_start_machines = true
   min_machines_running = 1
