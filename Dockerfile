@@ -5,8 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# ffmpeg pulls the one frame a post's still is made from.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+# ffmpeg pulls the one frame a post's still is made from; pg_dump takes the
+# backups, because a managed provider's own snapshots are their safety net, not
+# ours — a copy in our bucket is the one nobody else can revoke.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -14,10 +16,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY dsplatform ./dsplatform
 
-# SQLite lives on a mounted volume, not in the image — a machine can be
-# replaced at any time and the database has to survive that.
-ENV DATABASE_URL=sqlite:////data/dancesage.db \
-    STORAGE_BACKEND=r2
+# DATABASE_URL is a secret now that it carries Postgres credentials, so it is
+# set on the app rather than baked in. With it unset the code falls back to a
+# local SQLite file, which is what a developer wants.
+ENV STORAGE_BACKEND=r2
 
 RUN useradd --create-home appuser && mkdir -p /data && chown appuser /data
 

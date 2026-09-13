@@ -17,6 +17,7 @@ import gzip
 import os
 import pathlib
 import sqlite3
+import subprocess
 import sys
 import tempfile
 
@@ -49,20 +50,52 @@ def _snapshot(src: pathlib.Path) -> bytes:
         out.unlink(missing_ok=True)
 
 
+def _pg_dump() -> bytes:
+    """Postgres, as a plain SQL dump.
+
+    The provider takes its own snapshots, but those are theirs: they end when the
+    account does, and they cannot be read anywhere else. A dump in our own bucket
+    restores into any Postgres, which is the property that matters when the thing
+    going wrong is the provider.
+    """
+    url = os.environ["DATABASE_URL"]
+    out = subprocess.run(["pg_dump", "--no-owner", "--no-privileges", url],
+                         capture_output=True)
+    if out.returncode != 0:
+        raise RuntimeError(f"pg_dump failed: {out.stderr.decode()[-400:]}")
+    return gzip.compress(out.stdout, 6)
+
+
 def take() -> int:
+    from .db import IS_SQLITE
+    st = _client()
+    stamp = dt.datetime.utcnow().strftime("%Y-%m-%dT%H-%M-%S")
+
+    if not IS_SQLITE:
+        blob = _pg_dump()
+        key = PREFIX + stamp + ".sql.gz"
+        st.s3.put_object(Bucket=st.bucket, Key=key, Body=blob,
+                         ContentType="application/gzip")
+        print(f"{key}  {len(blob)/1024:.0f} KB  (pg_dump)")
+        _prune(st)
+        return 0
+
     src = _db_path()
     if not src.exists():
         print(f"no database at {src}")
         return 1
-    st = _client()
     blob = _snapshot(src)
-    key = PREFIX + dt.datetime.utcnow().strftime("%Y-%m-%dT%H-%M-%S") + ".db.gz"
+    key = PREFIX + stamp + ".db.gz"
     st.s3.put_object(Bucket=st.bucket, Key=key, Body=blob,
                      ContentType="application/gzip")
     print(f"{key}  {len(blob)/1024:.0f} KB  (from {src.stat().st_size/1024:.0f} KB)")
+    _prune(st)
+    return 0
 
-    # Rolling window. Old backups cost money and answer no question a recent one
-    # does not, but keep enough that a problem noticed late is still recoverable.
+
+def _prune(st) -> None:
+    """Rolling window. Old backups cost money and answer no question a recent one
+    does not, but keep enough that a problem noticed late is still recoverable."""
     keys = sorted(o["Key"] for o in
                   st.s3.list_objects_v2(Bucket=st.bucket, Prefix=PREFIX)
                     .get("Contents", []))
@@ -70,7 +103,6 @@ def take() -> int:
         st.s3.delete_object(Bucket=st.bucket, Key=old)
         print(f"  pruned {old}")
     print(f"  {min(len(keys), KEEP)} backups retained")
-    return 0
 
 
 def show() -> int:
@@ -87,7 +119,16 @@ def show() -> int:
 
 def restore(key: str) -> int:
     """Writes over the live database. Deliberately not automatic."""
+    from .db import IS_SQLITE
     st = _client()
+    if not IS_SQLITE:
+        # A SQL dump has to be replayed by Postgres itself, and doing that over a
+        # live database is a decision with consequences — so this prints the
+        # command instead of running it.
+        print("Postgres restores are run by hand, on purpose:\n"
+              f"  fly storage ... aws s3 cp s3://<bucket>/{key} - | gunzip | psql \"$DATABASE_URL\"\n"
+              "Drop or rename the existing schema first, or the replay will collide.")
+        return 1
     blob = st.s3.get_object(Bucket=st.bucket, Key=key)["Body"].read()
     data = gzip.decompress(blob) if blob[:2] == b"\x1f\x8b" else blob
     dest = _db_path()

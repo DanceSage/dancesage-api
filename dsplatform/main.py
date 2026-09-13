@@ -34,6 +34,11 @@ def _migrate():
     exists. A model that says nullable over a table that says NOT NULL looks
     correct in the code and fails at the first insert.
     """
+    from .db import IS_SQLITE
+    if not IS_SQLITE:
+        # Postgres gets its schema from the models, which already say nullable.
+        # This rebuilds a SQLite table in place and has nothing to fix here.
+        return
     from .migrate_handle_null import migrate
     url = os.environ.get("DATABASE_URL", "sqlite:///./dancesage.db")
     try:
@@ -49,9 +54,13 @@ def _migrate_grant_offers():
     it, and an upgrade must not take it away. Only a missing column triggers
     the backfill, so a restart never accepts anyone's pending offers."""
     from sqlalchemy import text
+    from .db import IS_SQLITE
     try:
         with engine.begin() as conn:
-            cols = [row[1] for row in conn.execute(text("PRAGMA table_info(grants)"))]
+            cols = [row[1] for row in conn.execute(text("PRAGMA table_info(grants)"))] \
+                if IS_SQLITE else [row[0] for row in conn.execute(text(
+                    "select column_name from information_schema.columns "
+                    "where table_name = 'grants'"))]
             if cols and "accepted_at" not in cols:
                 conn.execute(text("ALTER TABLE grants ADD COLUMN accepted_at DATETIME"))
                 conn.execute(text("UPDATE grants SET accepted_at = created_at"))

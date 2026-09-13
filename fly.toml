@@ -1,7 +1,8 @@
 # Dance Sage platform.
 #
 # Toronto, deliberately: R2 can only hint at a location, so the database —
-# the part that actually names people — is the piece worth pinning.
+# the part that actually names people — is the piece worth pinning. Postgres
+# sits in the same region for the same reason.
 
 app = "dancesage-api"
 primary_region = "yyz"
@@ -9,7 +10,7 @@ primary_region = "yyz"
 [build]
 
 [env]
-  DATABASE_URL = "sqlite:////data/dancesage.db"
+  # DATABASE_URL is a secret: `fly secrets set DATABASE_URL=postgresql://...`
   STORAGE_BACKEND = "r2"
   FIREBASE_PROJECT_ID = "dancesage-61d8e"
 
@@ -20,8 +21,9 @@ primary_region = "yyz"
 [http_service]
   internal_port = 8000
   force_https = true
-  # Never scale to zero: the machine holds the only copy of the database,
-  # and a cold start on every request would make the app feel broken.
+  # Never scale to zero: a cold start on every request would make the app feel
+  # broken. The database no longer lives on this machine, but the volume still
+  # holds the SQLite file it was migrated from — kept as the way back.
   auto_stop_machines = false
   auto_start_machines = true
   min_machines_running = 1
