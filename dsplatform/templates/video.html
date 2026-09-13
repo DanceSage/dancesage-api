@@ -107,13 +107,12 @@
       <span class="chip">{{ v.style }}</span><span class="chip">{{ v.level }}</span>
       <span class="chip">{{ v.seconds }}s</span>
       {% if v.dancers > 1 %}<span class="chip">partner</span>{% endif %}
-      {% for tier, b in (body or {}).items() %}<span class="chip" data-body-tier="{{ tier }}" style="{% if b.status == 'done' %}color:#EC48C8{% elif b.status == 'failed' %}color:var(--rose){% else %}color:var(--gold){% endif %}">{{ {'refined': 'Refined', '3d': '3D'}[tier] }}{% if b.status != 'done' %} · {{ {'queued': 'queued', 'running': 'refining…', 'failed': 'failed'}[b.status] }}{% endif %}</span>{% endfor %}
+      {% for tier, b in (body or {}).items() %}<span class="chip" data-body-tier="{{ tier }}" style="{% if b.status == 'done' %}color:#EC48C8{% elif b.status == 'failed' %}color:var(--rose){% else %}color:var(--gold){% endif %}">{{ {'refined': 'Refined', '3d': '3D'}.get(tier, tier) }}{% if b.status != 'done' %} · {{ {'queued': 'queued', 'running': 'refining…', 'failed': 'failed'}[b.status] }}{% endif %}</span>{% endfor %}
     </div>
     {% if is_owner and v.has_video and body is defined %}
     {# Refine: a body made after the fact. Refined is free while it costs cents; 3D is the paid plan. #}
     <div class="refine" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
       {% if not body.get('3d') or body['3d'].status == 'failed' %}<button class="grm" data-refine="3d" style="color:#EC48C8">Make it 3D{% if me.plan != 'pro' %} · paid{% endif %}</button>{% endif %}
-      {% if v.dancers > 1 and (not body.get('refined') or body['refined'].status == 'failed') %}<button class="grm" data-refine="refined" style="color:var(--teal)">Refine both dancers</button>{% endif %}
       <span class="refine-msg" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
     </div>
     {% endif %}

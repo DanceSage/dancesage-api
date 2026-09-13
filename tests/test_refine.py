@@ -51,7 +51,7 @@ def test_refine_goes_through_the_queue_to_the_worker_and_back():
 
     # a skeleton-only post cannot be refined
     bare = _post_video(maya, "Bare", with_video=False)
-    assert client.post(f"/v1/videos/{bare}/refine", json={"tier": "refined"}, headers=hdr(maya)).status_code == 400
+    assert client.post(f"/v1/videos/{bare}/refine", json={"tier": "3d"}, headers=hdr(maya)).status_code == 400
 
     # queued; asking again returns the same job
     r = client.post(f"/v1/videos/{vid}/refine", json={"tier": "3d"}, headers=hdr(maya))
@@ -93,20 +93,31 @@ def test_refine_goes_through_the_queue_to_the_worker_and_back():
     assert client.get(f"/body/{job_id}/mesh.bin").status_code == 404
 
 
-def test_the_3d_tier_needs_the_paid_plan_and_refined_does_not():
+def test_3d_is_the_only_tier_and_it_needs_the_paid_plan():
+    """One engine, one tier. The phone does the free work — MediaPipe for a solo,
+    Apple Vision for a partner — and both go off the phone to the same 3D fit,
+    which is the paid one. A solo is not a lesser case of it."""
     andy = _user("refandy")
     solo = _post_video(andy, "Shine")
     assert client.post(f"/v1/videos/{solo}/refine", json={"tier": "3d"}, headers=hdr(andy)).status_code == 402
-    # refine is for couples: a solo dancer goes straight to 3D
-    assert client.post(f"/v1/videos/{solo}/refine", json={"tier": "refined"}, headers=hdr(andy)).status_code == 400
-    vid = _post_video(andy, "Cross body lead", couple=True)
-    assert client.post(f"/v1/videos/{vid}/refine", json={"tier": "refined"}, headers=hdr(andy)).json()["status"] == "queued"
+    assert client.post(f"/v1/videos/{solo}/refine", json={"tier": "refined"},
+                       headers=hdr(andy)).status_code == 400          # the tier is gone
+
+    paid = _user("refpaid", plan="pro")
+    one = _post_video(paid, "Shine")
+    two = _post_video(paid, "Cross body lead", couple=True)
+    for vid in (one, two):
+        assert client.post(f"/v1/videos/{vid}/refine", json={"tier": "3d"},
+                           headers=hdr(paid)).json()["status"] == "queued"
+
     # a failed job is reported, and the tier can be asked for again
     w = {"X-Worker-Token": "worker-secret"}
     job = client.get("/v1/refine/next", headers=w).json()["job"]
     assert client.post(f"/v1/refine/{job['id']}/fail", json={"error": "out of memory"}, headers=w).status_code == 200
-    assert client.get(f"/v1/videos/{vid}/body", headers=hdr(andy)).json()["summary"]["refined"]["status"] == "failed"
-    assert client.post(f"/v1/videos/{vid}/refine", json={"tier": "refined"}, headers=hdr(andy)).json()["status"] == "queued"
+    failed = job["video_id"]
+    assert client.get(f"/v1/videos/{failed}/body", headers=hdr(paid)).json()["summary"]["3d"]["status"] == "failed"
+    assert client.post(f"/v1/videos/{failed}/refine", json={"tier": "3d"},
+                       headers=hdr(paid)).json()["status"] == "queued"
 
 
 def test_the_video_page_and_the_viewer_page_show_the_body():

@@ -1,7 +1,6 @@
 """Refine: the bodies made after the fact, and the worker that makes them.
 
 Tiers, matching the product:
-  refined   both dancers as bodies, from a GPU worker, minutes and cents
   3d        the full tracked body, turnable, the paid stage
 
 The platform never runs a model. It keeps a queue (body_tracks), hands jobs to a
@@ -26,10 +25,11 @@ from .storage import LocalStorage, get_storage
 
 router = APIRouter()
 
-TIERS = ("refined", "3d")
-# What each tier needs from the account. "refined" is free while it costs cents;
-# 3d is the paid stage. Flip here, not in the routes.
-TIER_PLAN = {"refined": "free", "3d": "pro"}
+# One tier, because there is one engine. The phone does the free work —
+# MediaPipe for a solo, Apple Vision for a partner — and anything off the phone
+# is the paid 3D skeleton.
+TIERS = ("3d",)
+TIER_PLAN = {"3d": "pro"}
 WORKER_TOKEN = os.environ.get("REFINE_WORKER_TOKEN", "")
 RUNPOD_KEY = os.environ.get("RUNPOD_API_KEY", "")
 RUNPOD_GPU = os.environ.get("RUNPOD_GPU", "NVIDIA A40")
@@ -69,11 +69,9 @@ def request_refine(video_id: int, payload: dict | None = None,
         raise HTTPException(404, "Not your video")
     if not v.video_key:
         raise HTTPException(400, "This post has no video to refine — the phone's skeleton is all there is")
-    tier = (payload or {}).get("tier") or "refined"
+    tier = (payload or {}).get("tier") or "3d"
     if tier not in TIERS:
         raise HTTPException(400, f"tier must be one of {TIERS}")
-    if tier == "refined" and (v.dancers or 1) < 2:
-        raise HTTPException(400, "Refine is for couple videos; a solo dancer goes straight to 3D")
     if TIER_PLAN[tier] == "pro" and u.plan != "pro":
         raise HTTPException(402, "The 3D body is part of the paid plan")
     live = db.execute(select(BodyTrack).where(BodyTrack.video_id == v.id, BodyTrack.tier == tier,
@@ -99,8 +97,7 @@ def get_body(video_id: int, tier: str = "", u: User | None = Depends(optional_us
     rows = db.execute(q.order_by(BodyTrack.created_at.desc())).scalars().all()
     if not rows:
         return {"summary": body_summary(v, db), "track": None}
-    # 3d beats refined when both exist
-    t = sorted(rows, key=lambda r: (r.tier == "3d", r.created_at), reverse=True)[0]
+    t = sorted(rows, key=lambda r: r.created_at, reverse=True)[0]
     files = {"joints": f"/body/{t.id}/joints.json", "meta": f"/body/{t.id}/meta.json"}
     if t.has_mesh:
         files["mesh"] = f"/body/{t.id}/mesh.bin"
