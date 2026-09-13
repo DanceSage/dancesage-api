@@ -213,8 +213,15 @@ def city(city: str, request: Request, style: str = "", level: str = "",
 
 
 @app.get("/sage", response_class=HTMLResponse)
-def sage_page(request: Request, me: User | None = Depends(optional_user),
-              db: Session = Depends(get_db)):
+def sage_redirect():
+    """`/sage` would read better, but only paths the CDN knows to proxy reach this
+    machine at all — a new top-level one is served by the marketing site instead,
+    which silently shows the home page. `/@sage` is already proxied, so that is
+    where Sage lives; this redirect starts working the day the rule is added."""
+    return RedirectResponse("/@sage", status_code=307)
+
+
+def _sage_page(request: Request, me: User | None, db: Session):
     """Sage's own page, not a dancer's profile.
 
     Sage is the teacher built into Dance Sage, for the dancer who has not got one
@@ -250,6 +257,8 @@ def sage_page(request: Request, me: User | None = Depends(optional_user),
 def profile(handle: str, request: Request, me: User | None = Depends(optional_user),
             db: Session = Depends(get_db)):
     """One page, three versions of itself depending on who is reading it."""
+    if handle == "sage":
+        return _sage_page(request, me, db)
     u = db.execute(select(User).where(User.handle == handle)).scalar_one_or_none()
     if not u:
         raise HTTPException(404, "No such profile")
