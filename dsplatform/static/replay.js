@@ -1,6 +1,6 @@
 // The phone's replay, on the web: teacher and student together — overlaid on
-// one body, or side by side over their own videos — with Teacher / You /
-// Video switches, one clock, one speed. The student's joints are graded
+// one body, or side by side over their own videos — with a switch per dancer,
+// named, plus Video; one clock, one speed. The student's joints are graded
 // against the teacher's the same way the app grades them.
 //
 // Expects the attempt's 2D track: j[0] the teacher as the camera saw them,
@@ -102,15 +102,24 @@
     const state = { t: 0, playing: true, rate: 1, mode: 'overlaid', teacher: true, you: true, video: true };
     const refFocus = focus(track, 0), attFocus = focus(track, 1);
 
+    /* Names, not roles. Two skeletons on one body are told apart faster by
+       "Abdu" and "Andy" than by "Teacher" and "You", and the page already knows
+       who sent the lesson and who answered it. The roles stay as the fallback,
+       and the text is escaped because a display name is whatever someone typed. */
+    const safe = t => String(t || '').replace(/[&<>"]/g,
+      c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const TEACHER_NAME = safe(opts.teacherName) || 'Teacher';
+    const YOU_NAME = safe(opts.youName) || 'You';
+
     root.innerHTML = `
       <div class="rp-pills">
         <span class="rp-group"><button data-mode="overlaid" class="on">Overlaid</button><button data-mode="side">Side by side</button></span>
-        <span class="rp-group"><button data-layer="teacher" class="on"><i style="background:${TEACHER[0]}"></i>Teacher</button><button data-layer="you" class="on"><i style="background:#4ade80"></i>You</button><button data-layer="video" class="on" hidden><i style="background:#fff"></i>Video</button></span>
+        <span class="rp-group"><button data-layer="teacher" class="on"><i style="background:${TEACHER[0]}"></i>${TEACHER_NAME}</button><button data-layer="you" class="on"><i style="background:#4ade80"></i>${YOU_NAME}</button><button data-layer="video" class="on" hidden><i style="background:#fff"></i>Video</button></span>
       </div>
       <div class="rp-stage rp-overlaid"><div class="rp-panel"><canvas class="rp-c" data-side="both"></canvas></div></div>
       <div class="rp-stage rp-side" hidden>
-        <div class="rp-panel">${opts.teacherVideo ? `<video class="rp-v" data-side="teacher" src="${opts.teacherVideo}" playsinline muted preload="auto"></video>` : ''}<canvas class="rp-c" data-side="teacher"></canvas><span class="rp-tag">Teacher</span>${opts.teacherVideo ? '' : '<span class="rp-none">no video</span>'}</div>
-        <div class="rp-panel">${opts.youVideo ? `<video class="rp-v" data-side="you" src="${opts.youVideo}" playsinline muted preload="auto"></video>` : ''}<canvas class="rp-c" data-side="you"></canvas><span class="rp-tag">You</span>${opts.youVideo ? '' : '<span class="rp-none">no video</span>'}</div>
+        <div class="rp-panel">${opts.teacherVideo ? `<video class="rp-v" data-side="teacher" src="${opts.teacherVideo}" playsinline muted preload="auto"></video>` : ''}<canvas class="rp-c" data-side="teacher"></canvas><span class="rp-tag">${TEACHER_NAME}</span>${opts.teacherVideo ? '' : '<span class="rp-none">no video</span>'}</div>
+        <div class="rp-panel">${opts.youVideo ? `<video class="rp-v" data-side="you" src="${opts.youVideo}" playsinline muted preload="auto"></video>` : ''}<canvas class="rp-c" data-side="you"></canvas><span class="rp-tag">${YOU_NAME}</span>${opts.youVideo ? '' : '<span class="rp-none">no video</span>'}</div>
       </div>
       <div class="ctl" style="flex-wrap:nowrap">
         <button class="rp-play" title="Pause">&#10074;&#10074;</button>

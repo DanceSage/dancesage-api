@@ -30,6 +30,9 @@ class _User:
 class _Video:
     def __init__(self, i):
         self.id = i
+        # Every video belongs to someone, and the replay now names both dancers
+        # from their owners rather than calling them Teacher and You.
+        self.user = _User()
         self.title = "T"
         self.seconds = 3
         self.has_video = False
