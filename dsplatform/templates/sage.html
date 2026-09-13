@@ -36,18 +36,18 @@
 
 {% macro vcard(v) %}
   <a class="card" href="/v/{{ v.id }}">
-    {% if v.thumb_key %}<img src="/thumb/{{ v.id }}.jpg" alt="" loading="lazy">
-    {% else %}<div class="noimg">skeleton</div>{% endif %}
+    {% if v.thumb_key or v.thumb %}<img class="still" src="/thumb/{{ v.id }}.jpg" alt="" loading="lazy">
+    {% else %}<canvas data-pose="/pose/{{ v.pose_key }}.json"></canvas>{% endif %}
     <div class="meta">
-      <span class="t">{{ v.title }}</span>
-      <span class="d">{{ v.level or 'All levels' }}{% if v.dancers > 1 %} &middot; couple{% else %} &middot; solo{% endif %}</span>
+      <div class="t">{{ v.title }}</div>
+      <div class="s">{{ v.level or 'All levels' }}{% if v.dancers > 1 %} &middot; couple{% else %} &middot; solo{% endif %}</div>
     </div>
   </a>
 {% endmacro %}
 
 {% set level_order = ['Beginner', 'Intermediate', 'Advanced', 'All levels'] %}
 {% for f in folders %}
-<details class="series"{% if loop.first %} open{% endif %}>
+<details class="series" open>
   <summary>
     <span class="ttl">{{ f.name }}</span>
     <span class="cnt">{{ f.open }} free
@@ -106,3 +106,8 @@
   }
 </style>
 {% endblock %}
+{% block js %}<script>
+document.querySelectorAll('canvas[data-pose]').forEach(c => {
+  new Skeleton(c, { yaw: 0.3, still: true }).load(c.dataset.pose);
+});
+</script>{% endblock %}

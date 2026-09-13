@@ -12,10 +12,10 @@
 {% for name, group in cfolders %}
 <div class="folder">
   <div class="folder-head"><span>&#128193;</span> {{ name }} <span class="cnt">series &middot; {{ group|length }}</span></div>
-  {% for c in group %}{% include '_class.html' %}{% endfor %}
+  <div class="grid">{% for c in group %}{% include '_class.html' %}{% endfor %}</div>
 </div>
 {% endfor %}
-{% for c in classes|rejectattr('series') %}{% include '_class.html' %}{% endfor %}
+<div class="grid">{% for c in classes|rejectattr('series') %}{% include '_class.html' %}{% endfor %}</div>
 <h2 style="font-size:1.05rem;margin:30px 0 4px">I'm learning</h2>
 {% endif %}
 <p class="sub" style="margin:0 0 12px">Videos you added to Lessons, arranged the way the teacher shared them. Under each: your attempts — send one to the teacher, or delete it. Nothing here is on your profile.</p>
@@ -24,12 +24,12 @@
 {% for name, group in folders %}
 <div class="folder">
   <div class="folder-head"><span>&#128193;</span> {{ name }} <span class="cnt">series &middot; {{ group|length }} lesson{{ '' if group|length == 1 else 's' }}</span></div>
-  {% for l in group %}{% include '_lesson.html' %}{% endfor %}
+  <div class="grid">{% for l in group %}{% include '_lesson.html' %}{% endfor %}</div>
 </div>
 {% endfor %}
 {% set loose = lessons|rejectattr('series')|list %}
 {% if loose and folders|list %}<div class="folder-head" style="margin-top:18px">Single lessons</div>{% endif %}
-{% for l in loose %}{% include '_lesson.html' %}{% endfor %}
+<div class="grid">{% for l in loose %}{% include '_lesson.html' %}{% endfor %}</div>
 
 {% if not lessons %}
 <p class="sub">Nothing yet. Accept a video someone shared, then Add to Lessons in the app — it appears here at once, and your attempts fill in under it.</p>
@@ -38,26 +38,39 @@
   .folder{margin-bottom:18px}
   .folder-head{font-weight:700;margin:8px 0 8px;display:flex;align-items:center;gap:8px}
   .folder-head .cnt{font-weight:400;color:var(--muted);font-size:.78rem}
-  .lesson{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:0 16px;margin-bottom:10px;max-width:760px}
-  .folder .lesson{margin-left:18px}
-  .lesson summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:13px 0}
-  .lesson summary::-webkit-details-marker{display:none}
-  .lesson summary::before{content:"▸";color:var(--gold);font-size:.9rem;transition:transform .15s}
-  .lesson[open] summary::before{transform:rotate(90deg)}
-  .lesson .ttl{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .lesson .cnt{color:var(--muted);font-size:.78rem;white-space:nowrap}
-  .lesson .watch{color:var(--gold);font-size:.78rem;text-decoration:none}
-  .lesson .ldel{background:none;border:none;color:var(--rose);cursor:pointer;font:600 .72rem var(--mono);text-transform:uppercase}
-  .attempts{list-style:none;margin:0 0 14px;padding:0 0 0 22px;display:grid;gap:8px}
-  .attempts li{display:flex;align-items:center;gap:12px}
-  .attempts li a{color:var(--text);text-decoration:none;font-size:.9rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .attempts .send{background:var(--gold);border:none;color:#241a06;font:600 .72rem var(--font-body);padding:5px 11px;border-radius:999px;cursor:pointer}
-  .attempts .sent{color:#3ad6b0;font-size:.78rem}
-  .attempts .adel{background:none;border:none;color:var(--rose);cursor:pointer;font-size:.9rem;padding:0 4px}
-  .none{color:var(--muted);font-size:.85rem;margin:0 0 14px 22px}
+  .lcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    overflow:hidden;display:flex;flex-direction:column}
+  .lshot{display:block;line-height:0}
+  .lshot img.still,.lshot canvas{width:100%;aspect-ratio:3/4;display:block;
+    background:var(--panel2);object-fit:cover}
+  .lshot:hover img.still{opacity:.88}
+  .lmeta{padding:11px 13px 9px}
+  .lmeta .t{font-weight:600;font-size:.94rem;line-height:1.3}
+  .lmeta .s{color:var(--muted);font-size:.78rem;margin-top:3px}
+  .attempts{list-style:none;margin:0;padding:0 13px 4px;display:grid;gap:6px}
+  /* A card is narrow, so an attempt wraps onto a second line rather than
+     truncating the one thing that tells two tries apart. */
+  .attempts li{display:flex;align-items:center;gap:7px;font-size:.82rem;min-width:0;
+    flex-wrap:wrap;padding-bottom:5px;border-bottom:1px solid var(--line)}
+  .attempts li:last-child{border-bottom:0}
+  .attempts li a{color:var(--text);text-decoration:none;flex:1 1 100%;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .attempts .when{color:var(--muted);font-size:.72rem}
+  .attempts li a b{font-weight:600}
+  .attempts .send{background:var(--gold);border:none;color:#241a06;
+    font:600 .68rem var(--font-body);padding:4px 9px;border-radius:999px;cursor:pointer}
+  .attempts .sent{color:#3ad6b0;font-size:.72rem}
+  .attempts .adel{background:none;border:none;color:var(--rose);cursor:pointer;
+    font-size:.95rem;padding:0 2px;line-height:1}
+  .ldel{margin:auto 13px 12px;align-self:flex-start;background:none;border:none;
+    color:var(--rose);cursor:pointer;font:600 .68rem var(--mono);text-transform:uppercase}
+  .none{color:var(--muted);font-size:.8rem;margin:0 13px 10px}
 </style>
 {% endblock %}
 {% block js %}<script>
+document.querySelectorAll('canvas[data-pose]').forEach(c => {
+  new Skeleton(c, { yaw: 0.3, still: true }).load(c.dataset.pose);
+});
 document.querySelectorAll('li[data-attempt] .send').forEach(b => b.onclick = async () => {
   const r = await fetch(`/v1/lessons/${b.closest('li').dataset.attempt}/send`, { method: 'POST' });
   if (r.ok) location.reload(); else alert((await r.json()).detail || 'Could not send it.');
@@ -67,9 +80,9 @@ document.querySelectorAll('li[data-attempt] .adel').forEach(b => b.onclick = asy
   const r = await fetch(`/v1/lessons/attempts/${b.closest('li').dataset.attempt}`, { method: 'DELETE' });
   if (r.ok) location.reload(); else alert('Could not delete it.');
 });
-document.querySelectorAll('details[data-lesson] .ldel').forEach(b => b.onclick = async e => {
+document.querySelectorAll('[data-lesson] .ldel').forEach(b => b.onclick = async e => {
   e.preventDefault(); e.stopPropagation();
-  const d = b.closest('details');
+  const d = b.closest('[data-lesson]');
   if (!confirm(`Delete the lesson “${d.dataset.name}” and every attempt at it?`)) return;
   const r = await fetch(`/v1/lessons/${d.dataset.lesson}`, { method: 'DELETE' });
   if (r.ok) location.reload(); else alert('Could not delete it.');
