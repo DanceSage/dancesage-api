@@ -91,7 +91,12 @@ def _viewable(tr, u, db, token_ok: bool) -> bool:
     if tr.status == "done":
         return token_ok or _may_view(tr.video, u, db)
     if tr.status == "failed":
-        return _owns(tr.video, u)
+        # The signed link counts here too. A web view carries no Authorization
+        # header, which is why the app is handed a token at all — and the token is
+        # only ever minted for someone already allowed to see the track, so the
+        # owner opening their own rejected body from the phone is the same person
+        # the rule above lets in from a browser.
+        return _owns(tr.video, u) or token_ok
     return False
 
 
