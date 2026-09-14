@@ -121,7 +121,7 @@
     </style>
     <div class="refine" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
       {% if not body.get('3d') or body['3d'].status == 'failed' %}<button class="grm" data-refine="3d" style="color:#EC48C8">Make it 3D{% if not can_refine %} · paid{% endif %}</button>{% endif %}
-      {% if body.get('3d') and body['3d'].status == 'queued' %}<button class="grm" data-cancel="{{ body['3d'].id }}">Cancel</button>{% endif %}
+      {% if body.get('3d') and body['3d'].status in ('queued', 'running') %}<button data-cancel="{{ body['3d'].id }}">Cancel</button>{% endif %}
       <span class="refine-msg" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
     </div>
     {% endif %}
@@ -258,18 +258,22 @@ if (HASVID) {
 })();
 </script>{% endif %}
 {% if is_owner and v.has_video and body is defined %}<script>
+// Top level: this button exists on load, and used to be wired up inside the other
+// one's click handler — so it was only ever live after you had asked for a body.
+document.querySelectorAll('[data-cancel]').forEach(c => c.onclick = async () => {
+  const msg = document.querySelector('.refine-msg');
+  c.disabled = true; msg.textContent = 'Cancelling…';
+  const r = await fetch('/v1/refine/' + c.dataset.cancel + '/cancel', { method: 'POST' });
+  if (r.ok) { location.reload(); return; }
+  c.disabled = false;
+  msg.textContent = ((await r.json().catch(() => ({}))).detail) || 'Could not cancel that.';
+});
 document.querySelectorAll('button[data-refine]').forEach(b => b.onclick = async () => {
   const msg = document.querySelector('.refine-msg'); b.disabled = true; msg.textContent = 'Asking…';
   const r = await fetch('/v1/videos/{{ v.id }}/refine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tier: b.dataset.refine }) });
   if (r.status === 402) { msg.textContent = 'The 3D body is part of the paid plan.'; b.disabled = false; return; }
   if (!r.ok) { msg.textContent = 'Could not queue that.'; b.disabled = false; return; }
   msg.textContent = 'Queued. A few minutes — this page will refresh when it is ready.';
-  document.querySelectorAll('[data-cancel]').forEach(c => c.addEventListener('click', async () => {
-    c.disabled = true;
-    const r = await fetch('/v1/refine/' + c.dataset.cancel + '/cancel', { method: 'POST' });
-    if (r.ok) location.reload();
-    else { c.disabled = false; msg.textContent = (await r.json()).detail || 'Could not cancel that.'; }
-  }));
   const poll = setInterval(async () => {
     const j = await (await fetch('/v1/videos/{{ v.id }}/body')).json();
     const s = (j.summary[b.dataset.refine] || {}).status;
