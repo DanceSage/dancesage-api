@@ -25,10 +25,23 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="/static/body3d.js?v=7"></script>
 <script>
-// A promise that rejects quietly leaves "Loading the bodies…" on screen for ever.
+// The app opens this page in a web view, where a blank dark box is all you get
+// when the three.js script never arrived or WebGL refused to start. Say which.
+(function () {
+  const show = m => { const r = document.getElementById('root'); r.textContent = m;
+    r.style.cssText = 'display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:#8B8E99'; };
+  if (typeof THREE === 'undefined') { show('The 3D library did not load on this device.'); return; }
+  try {
+    const t = document.createElement('canvas');
+    if (!(t.getContext('webgl2') || t.getContext('webgl'))) { show('This device would not start WebGL, so the body cannot be drawn.'); return; }
+  } catch (e) { show('WebGL could not start here: ' + e.message); return; }
+  start();
+})();
+function start() {
 mountBody3D(document.getElementById('root'), {{ files|tojson }}).catch(e => {
   const el = document.querySelector('.b3-status') || document.getElementById('root');
   el.hidden = false;
   el.textContent = 'Could not show this body — ' + (e && e.message ? e.message : e);
 });
+}
 </script>
