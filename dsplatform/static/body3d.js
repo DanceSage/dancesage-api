@@ -160,6 +160,10 @@ window.mountBody3D = async function (root, files, opts = {}) {
   }
   function tick(now) {
     if (!root.isConnected) return;
+    // Hidden means hidden: keep the loop alive but draw nothing. A WebGL scene
+    // rendering every frame behind a closed panel starves the 2D skeleton canvas
+    // on the same page, which is exactly how this viewer made the flat one stutter.
+    if (root.hidden || !root.offsetParent) { last = now; requestAnimationFrame(tick); return; }
     if (opts.clock) pos = Math.max(0, Math.min(c.m.frames - 1, opts.clock() * c.m.fps));
     else if (playing) { pos = (pos + (now - last) / 1000 * c.m.fps * rate) % c.m.frames; }
     const f = Math.floor(pos); if (f !== frame) { frame = f; setFrame(); }
