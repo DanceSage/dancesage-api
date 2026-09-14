@@ -93,17 +93,27 @@ window.mountBody3D = async function (root, files, opts = {}) {
   // the same flipped frame the drawing uses, so the figure lands on the grid.
   let lo = meta.lo, hi = meta.hi;
   if (!lo || !hi) {
-    lo = [Infinity, Infinity, Infinity]; hi = [-Infinity, -Infinity, -Infinity];
+    // Percentiles, not min and max. A fit that loses the dancer for a moment puts
+    // a joint metres away, and framing to the extremes then pulls the camera back
+    // until the person is a speck — which is exactly when somebody most wants to
+    // look at the body and work out what went wrong.
+    const axes = [[], [], []];
     for (const person of (joints ? joints.people : [])) {
       for (const f of person) {
         if (!f) continue;
         for (const j of f) {
           const v = [j[0], -j[1], -j[2]];
-          for (let i = 0; i < 3; i++) { if (v[i] < lo[i]) lo[i] = v[i]; if (v[i] > hi[i]) hi[i] = v[i]; }
+          for (let i = 0; i < 3; i++) if (Number.isFinite(v[i])) axes[i].push(v[i]);
         }
       }
     }
-    if (!isFinite(lo[0])) { lo = [-0.5, -0.9, -0.5]; hi = [0.5, 0.9, 0.5]; }
+    const at = (arr, q) => arr[Math.min(arr.length - 1, Math.max(0, Math.round(q * (arr.length - 1))))];
+    if (axes[0].length) {
+      axes.forEach(a => a.sort((x, y) => x - y));
+      lo = axes.map(a => at(a, 0.02));
+      hi = axes.map(a => at(a, 0.98));
+      for (let i = 0; i < 3; i++) if (hi[i] - lo[i] < 0.2) { const m = (hi[i] + lo[i]) / 2; lo[i] = m - 0.1; hi[i] = m + 0.1; }
+    } else { lo = [-0.5, -0.9, -0.5]; hi = [0.5, 0.9, 0.5]; }
     // These bounds were measured after the same y/z flip the drawing applies, so
     // they are already in the drawn frame and the centre is taken from them
     // exactly as the mesh path takes it from meta.
