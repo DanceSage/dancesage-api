@@ -25,5 +25,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="/static/body3d.js?v=3"></script>
 <script>
-mountBody3D(document.getElementById('root'), {{ files|tojson }});
+// A promise that rejects quietly leaves "Loading the bodies…" on screen for ever.
+mountBody3D(document.getElementById('root'), {{ files|tojson }}).catch(e => {
+  const el = document.querySelector('.b3-status') || document.getElementById('root');
+  el.hidden = false;
+  el.textContent = 'Could not show this body — ' + (e && e.message ? e.message : e);
+});
 </script>

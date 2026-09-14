@@ -24,7 +24,7 @@ window.mountBody3D = async function (root, files, opts = {}) {
   const key = new THREE.DirectionalLight(0xffffff, 0.9); key.position.set(1.5, 3, 2.5); scene.add(key);
   const fill = new THREE.DirectionalLight(0xffffff, 0.35); fill.position.set(-2, 1, -1.5); scene.add(fill);
   let pos = 0, frame = -1, playing = true, rate = 1, last = performance.now();
-  let yaw = 0, pitch = 0.1, zoom = 1, meshes = [], c = null;
+  let yaw = 0, pitch = 0.1, zoom = 1, meshes = [], c = null, jointsWhy = '';
   // The skeleton: the joints file alone, lines and dots, no surface. What the score uses.
   let skeleton = true, joints = null, bones = null, sk = [];
   // MHR70 (SAM 3D Body): 0 nose 1-2 eyes 3-4 ears 5-6 shoulders 7-8 elbows 9-10 hips 11-12 knees 13-14 ankles
@@ -44,7 +44,20 @@ window.mountBody3D = async function (root, files, opts = {}) {
   }
   new ResizeObserver(resize).observe(root); resize();
 
-  const meta = await (await fetch(files.meta, { credentials: 'same-origin' })).json();
+  // Anything that goes wrong from here shows on the page. "Loading the bodies…"
+  // sitting there for ever, with the reason only in a console nobody had open,
+  // is how an evening goes.
+  const fail = (why) => { const el = $('.b3-status'); if (el) { el.hidden = false; el.textContent = why; } };
+  const grab = async (url, what) => {
+    let r;
+    try { r = await fetch(url, { credentials: 'same-origin' }); }
+    catch (e) { throw new Error(what + ': could not be fetched (' + e.message + ')'); }
+    if (!r.ok) throw new Error(what + ': ' + r.status + ' ' + r.statusText);
+    try { return await r.json(); }
+    catch (e) { throw new Error(what + ': came back as something other than JSON'); }
+  };
+
+  const meta = await grab(files.meta, 'meta.json');
   // The surface is optional now. Since the mesh was cut a track is joints alone,
   // and its meta carries no faces, verts or bounds — so everything the viewer
   // needs about size and centre comes from the joints themselves below.
@@ -63,7 +76,7 @@ window.mountBody3D = async function (root, files, opts = {}) {
     }
   }
   try {
-    joints = await (await fetch(files.joints, { credentials: 'same-origin' })).json();
+    joints = await grab(files.joints, 'joints.json');
     const first = joints.people.flat().find(f => f && f.length);
     bones = first && first.length >= 70 ? BONES.mhr70 : BONES.smplx;     // MHR70 (SAM 3D Body) or SMPL-X
     for (let p = 0; p < joints.people.length; p++) {
@@ -74,7 +87,7 @@ window.mountBody3D = async function (root, files, opts = {}) {
       const limbs = bones.map(() => { const hand = b => (b >= 21 && b <= 61 && b !== 41); const l = new THREE.Mesh(new THREE.CylinderGeometry(hand(bones[sk.length] ? 0 : 0) ? 0.005 : 0.011, 0.011, 1, 8), mat); grp.add(l); return l; });
       sk.push({ grp, dots, limbs });
     }
-  } catch (e) { joints = null; skeleton = false; }
+  } catch (e) { joints = null; skeleton = false; jointsWhy = e.message; }
 
   // The mesh brought its own bounds; a skeleton-only track is measured here, in
   // the same flipped frame the drawing uses, so the figure lands on the grid.
@@ -102,7 +115,9 @@ window.mountBody3D = async function (root, files, opts = {}) {
     c.size = Math.max(hi[1]-lo[1], (hi[0]-lo[0]) * root.clientHeight / Math.max(1, root.clientWidth));
   }
   const grid = new THREE.GridHelper(4, 16, 0x2A2F37, 0x1E232A); grid.position.y = (lo[1]-c.centre[1]) - 0.02; rig.add(grid);
-  $('.b3-scrub').max = meta.frames - 1; $('.b3-status').hidden = true;
+  $('.b3-scrub').max = meta.frames - 1;
+  if (!joints && !meshes.length) { fail('Nothing to draw — ' + (jointsWhy || 'no joints and no mesh')); return; }
+  $('.b3-status').hidden = true;
 
   function setSkeleton() {
     const [cx, cy, cz] = c.centre, up = new THREE.Vector3(0, 1, 0);

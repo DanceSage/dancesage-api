@@ -240,7 +240,8 @@ if (HASVID) {
     const on = chip.classList.toggle('on'); box.hidden = !on;
     if (vid) vid.style.visibility = on ? 'hidden' : ''; cvs.style.visibility = on ? 'hidden' : '';
     if (on) { if (typeof sk !== 'undefined' && sk.pause) sk.pause(); if (vid) vid.pause(); }
-    if (on && !viewer) viewer = await mountBody3D(box, {{ body_files|tojson }});
+    if (on && !viewer) viewer = await mountBody3D(box, {{ body_files|tojson }}).catch(e => {
+      box.textContent = 'Could not show this body — ' + (e && e.message ? e.message : e); return null; });
     else if (viewer) { on ? viewer.play() : viewer.pause(); }
   };
 })();
