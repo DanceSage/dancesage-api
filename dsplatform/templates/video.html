@@ -217,11 +217,17 @@ if (HASVID) {
   chips.forEach(b => b.onclick = () => { layers[b.dataset.layer] = !layers[b.dataset.layer]; apply(); });
   // the video is the clock when it is present, so the skeleton cannot drift off it
   vid.play().catch(() => {});
-  vid.addEventListener('timeupdate', () => {
+  // Read the clip's clock every animation frame rather than waiting for
+  // timeupdate, which fires about four times a second — enough to keep a
+  // skeleton roughly in the right place and nowhere near enough to make it look
+  // like it is dancing. Redraw only when the frame actually changes, so a paused
+  // video costs nothing.
+  (function follow() {
+    requestAnimationFrame(follow);
     if (!sk.data) return;
-    sk.f = Math.min(sk.data.frames - 1, sk.frameAtTime(vid.currentTime));
-    sk.draw();
-  });
+    const f = Math.min(sk.data.frames - 1, sk.frameAtTime(vid.currentTime));
+    if (f !== sk.f) { sk.f = f; sk.draw(); }
+  })();
   sk.pause();
   document.getElementById('play').onclick = e => {
     if (vid.paused) { vid.play(); e.target.innerHTML = '&#10074;&#10074;'; }
