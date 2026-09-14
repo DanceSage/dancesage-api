@@ -159,7 +159,10 @@ fetch({{ ('/pose/' ~ v.pose2d_key ~ '.json')|tojson }}).then(r => r.json()).then
 </script>{% else %}{% if can_share %}{% include '_vmenu_js.html' %}{% endif %}<script>
 const HASVID = {{ 'true' if v.has_video else 'false' }};
 const POSE2D = "{{ v.pose2d_key }}";
-const sk = new Skeleton(document.getElementById('cv'), {yaw: 17*Math.PI/180});
+// With a video present the clip is the clock and timeupdate moves the skeleton,
+// so it must not run a loop of its own. pause() alone could not stop it: load()
+// is async and calls play() when the data lands, long after the pause.
+const sk = new Skeleton(document.getElementById('cv'), {yaw: 17*Math.PI/180, autoplay: !HASVID});
 const clock = t => Math.floor(t/60) + ':' + String(Math.floor(t%60)).padStart(2,'0');
 sk.onframe = (f,n) => { document.getElementById('fno').textContent = clock(sk.timeAtFrame(f));
                         document.getElementById('scrub').value = f; };
