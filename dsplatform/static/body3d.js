@@ -116,6 +116,10 @@ window.mountBody3D = async function (root, files, opts = {}) {
   }
   const grid = new THREE.GridHelper(4, 16, 0x2A2F37, 0x1E232A); grid.position.y = (lo[1]-c.centre[1]) - 0.02; rig.add(grid);
   $('.b3-scrub').max = meta.frames - 1;
+  // Embedded in the video page, the clip is the clock. Two players in one box —
+  // one of them looping on its own animation loop while the video stopped — was
+  // never going to look like anything but a bug.
+  if (opts.clock) $('.b3-bar').hidden = true;
   if (!joints && !meshes.length) { fail('Nothing to draw — ' + (jointsWhy || 'no joints and no mesh')); return; }
   $('.b3-status').hidden = true;
 
@@ -156,7 +160,8 @@ window.mountBody3D = async function (root, files, opts = {}) {
   }
   function tick(now) {
     if (!root.isConnected) return;
-    if (playing) { pos = (pos + (now - last) / 1000 * c.m.fps * rate) % c.m.frames; }
+    if (opts.clock) pos = Math.max(0, Math.min(c.m.frames - 1, opts.clock() * c.m.fps));
+    else if (playing) { pos = (pos + (now - last) / 1000 * c.m.fps * rate) % c.m.frames; }
     const f = Math.floor(pos); if (f !== frame) { frame = f; setFrame(); }
     rig.rotation.set(pitch, yaw, 0);
     const d = (c.size * 1.55 / Math.tan(THREE.MathUtils.degToRad(20))) / 2 / zoom;

@@ -140,9 +140,14 @@ def cancel_refine(track_id: int, u: User = Depends(current_user), db: Session = 
     t = db.get(BodyTrack, track_id)
     if not t or not _owns(t.video, u):
         raise HTTPException(404, "No such job")
-    if t.status != "queued":
-        raise HTTPException(409, "Too late — a worker already has this one")
-    t.status = "failed"; t.error = "cancelled before it started"
+    if t.status not in ("queued", "running"):
+        raise HTTPException(409, "That job is already finished")
+    # Running can be cancelled too. A worker can vanish — its pod terminated, its
+    # machine reclaimed — and nothing would ever come back for the job, leaving
+    # "refining…" on the page for ever. The GPU time already spent is spent; this
+    # only stops waiting for it.
+    t.error = "cancelled before it started" if t.status == "queued" else "cancelled while running"
+    t.status = "failed"
     t.finished_at = dt.datetime.utcnow()
     db.commit()
     return {"ok": True, "id": t.id}
@@ -155,6 +160,7 @@ def get_body(video_id: int, tier: str = "", u: User | None = Depends(optional_us
     v = db.get(Video, video_id)
     if not _may_view(v, u, db):
         raise HTTPException(404, "No such video")
+    _reap_abandoned(db)
     statuses = ["done", "failed"] if _owns(v, u) else ["done"]
     q = select(BodyTrack).where(BodyTrack.video_id == v.id, BodyTrack.status.in_(statuses))
     if tier:
@@ -358,6 +364,27 @@ def _runpod(query: str) -> dict:
                                           "User-Agent": "dancesage-platform/1.0"})
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read())
+
+
+# A fit takes minutes; an hour means the worker is never coming back.
+ABANDONED_AFTER_MINUTES = float(os.environ.get("REFINE_ABANDONED_MINUTES", "60"))
+
+
+def _reap_abandoned(db: Session) -> None:
+    """Fail jobs whose worker vanished, so nothing waits on a pod that is gone.
+
+    A pod can be terminated mid-job — by us, or by RunPod reclaiming the machine —
+    and the track stays "running" with nobody left to finish or fail it. That kept
+    the page saying "refining…" indefinitely and, worse, looked like a job still
+    in progress to anyone deciding whether to start another."""
+    cutoff = dt.datetime.utcnow() - dt.timedelta(minutes=ABANDONED_AFTER_MINUTES)
+    stale = db.execute(select(BodyTrack).where(BodyTrack.status == "running",
+                                               BodyTrack.started_at < cutoff)).scalars().all()
+    for t in stale:
+        t.status = "failed"; t.error = "the worker never came back"; t.finished_at = dt.datetime.utcnow()
+    if stale:
+        db.commit()
+        print(f"refine: gave up on {len(stale)} abandoned job(s)", flush=True)
 
 
 _last_wake = 0.0

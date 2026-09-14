@@ -107,10 +107,18 @@
       <span class="chip">{{ v.style }}</span><span class="chip">{{ v.level }}</span>
       <span class="chip">{{ v.seconds }}s</span>
       {% if v.dancers > 1 %}<span class="chip">partner</span>{% endif %}
-      {% for tier, b in (body or {}).items() %}<span class="chip" data-body-tier="{{ tier }}" style="{% if b.status == 'done' %}color:#EC48C8{% elif b.status == 'failed' %}color:var(--rose){% else %}color:var(--gold){% endif %}">{{ {'refined': 'Refined', '3d': '3D'}.get(tier, tier) }}{% if b.status != 'done' %} · {{ {'queued': 'queued', 'running': 'refining…', 'failed': 'failed'}[b.status] }}{% endif %}</span>{% endfor %}
+      {% for tier, b in (body or {}).items() %}<span class="chip" data-body-tier="{{ tier }}" style="{% if b.status == 'done' %}color:#EC48C8{% elif b.status == 'failed' %}color:var(--rose){% else %}color:var(--gold){% endif %}">{{ {'refined': 'Refined', '3d': '3D'}.get(tier, tier) }}{% if b.status != 'done' %} · {{ {'queued': 'queued', 'running': 'refining…', 'failed': 'not accepted'}[b.status] }}{% endif %}</span>{% endfor %}
     </div>
     {% if is_owner and v.has_video and body is defined %}
     {# Refine: a body made after the fact. Refined is free while it costs cents; 3D is the paid plan. #}
+    <style>
+      .refine button{background:var(--card,#1A1E24);border:1px solid var(--line);color:var(--text);
+        font:600 .82rem var(--font-body);padding:8px 16px;border-radius:999px;cursor:pointer;
+        display:inline-flex;align-items:center;gap:7px;transition:border-color .15s,transform .05s}
+      .refine button:hover:not(:disabled){border-color:#EC48C8}
+      .refine button:active:not(:disabled){transform:translateY(1px)}
+      .refine button:disabled{opacity:.55;cursor:default}
+    </style>
     <div class="refine" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
       {% if not body.get('3d') or body['3d'].status == 'failed' %}<button class="grm" data-refine="3d" style="color:#EC48C8">Make it 3D{% if not can_refine %} · paid{% endif %}</button>{% endif %}
       {% if body.get('3d') and body['3d'].status == 'queued' %}<button class="grm" data-cancel="{{ body['3d'].id }}">Cancel</button>{% endif %}
@@ -231,7 +239,7 @@ if (HASVID) {
   c.addEventListener('pointerup',end); c.addEventListener('pointercancel',end);
 }
 </script>{% endif %}
-{% if body_track %}<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script><script src="/static/body3d.js?v=4"></script><script>
+{% if body_track %}<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script><script src="/static/body3d.js?v=5"></script><script>
 (() => {
   // The 3D mode: the fitted body in place of video and skeleton. Mounted once, on first use.
   const chip = document.querySelector('button.layer[data-layer="body"]'), box = document.getElementById('body3d');
@@ -240,10 +248,12 @@ if (HASVID) {
   chip.onclick = async () => {
     const on = chip.classList.toggle('on'); box.hidden = !on;
     if (vid) vid.style.visibility = on ? 'hidden' : ''; cvs.style.visibility = on ? 'hidden' : '';
-    if (on) { if (typeof sk !== 'undefined' && sk.pause) sk.pause(); if (vid) vid.pause(); }
-    if (on && !viewer) viewer = await mountBody3D(box, {{ body_files|tojson }}).catch(e => {
-      box.textContent = 'Could not show this body — ' + (e && e.message ? e.message : e); return null; });
-    else if (viewer) { on ? viewer.play() : viewer.pause(); }
+    // The video keeps running underneath, hidden: it is the clock the skeleton
+    // follows, so the page's own controls drive both and they stop together.
+    if (on && typeof sk !== 'undefined' && sk.pause) sk.pause();
+    if (on && !viewer) viewer = await mountBody3D(box, {{ body_files|tojson }},
+      { clock: () => (vid ? vid.currentTime : 0) }).catch(e => {
+        box.textContent = 'Could not show this body — ' + (e && e.message ? e.message : e); return null; });
   };
 })();
 </script>{% endif %}
