@@ -193,6 +193,11 @@ def body_view(track_id: int, request: Request, t: str = "", u: User | None = Dep
     from .main import templates
     tr = db.get(BodyTrack, track_id)
     if not tr or not _viewable(tr, u, db, _view_ok(track_id, t)):
+        # A bare 404 here cost an evening: the files were fetchable and the page was
+        # not, and nothing said which of the three reasons it was.
+        print(f"body_view refused {track_id}: exists={bool(tr)} status={getattr(tr, 'status', None)} "
+              f"user={getattr(u, 'id', None)} owner={getattr(getattr(tr, 'video', None), 'user_id', None)} "
+              f"token={bool(t)}", flush=True)
         raise HTTPException(404, "No 3D body here")
     return templates.TemplateResponse(request, "body3d.html", {"v": tr.video, "track": tr, "files": _files(tr, t)})
 
