@@ -129,6 +129,25 @@ def request_refine(video_id: int, payload: dict | None = None,
     return {"id": t.id, "status": t.status, "tier": tier}
 
 
+@router.post("/v1/refine/{track_id}/cancel")
+def cancel_refine(track_id: int, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Take back a job that has not been picked up yet.
+
+    Asking for a body costs money and took one click; until now there was no way
+    to change your mind. Only while it is still queued — once a worker has it the
+    GPU time is already being spent, and pretending otherwise would be a lie.
+    """
+    t = db.get(BodyTrack, track_id)
+    if not t or not _owns(t.video, u):
+        raise HTTPException(404, "No such job")
+    if t.status != "queued":
+        raise HTTPException(409, "Too late — a worker already has this one")
+    t.status = "failed"; t.error = "cancelled before it started"
+    t.finished_at = dt.datetime.utcnow()
+    db.commit()
+    return {"ok": True, "id": t.id}
+
+
 @router.get("/v1/videos/{video_id}/body")
 def get_body(video_id: int, tier: str = "", u: User | None = Depends(optional_user),
              db: Session = Depends(get_db)):
