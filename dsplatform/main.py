@@ -21,7 +21,16 @@ from .auth import (verify_provider_token, issue_session, current_user,
                     optional_user, COOKIE, SECRET)
 
 HERE = pathlib.Path(__file__).parent
-app = FastAPI(title="Dance Sage")
+# No public API: Dance Sage sells to dancers, not to developers. FastAPI serves
+# /docs, /redoc and /openapi.json by default, which listed every endpoint — the
+# queue, the worker's own calls, all of it — to anyone who asked. Nothing was
+# reachable without a token, but there is no reason to hand a stranger the floor
+# plan. Set DOCS=1 in development to get them back.
+_docs = os.environ.get("DOCS") == "1"
+app = FastAPI(title="Dance Sage",
+              docs_url="/docs" if _docs else None,
+              redoc_url="/redoc" if _docs else None,
+              openapi_url="/openapi.json" if _docs else None)
 
 BACKUP_HOURS = float(os.environ.get("BACKUP_EVERY_HOURS", "12"))
 
