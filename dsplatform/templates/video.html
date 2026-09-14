@@ -173,8 +173,14 @@ sk.load(POSE_URL).then(d => {
   const base = d.fps;
   document.getElementById('spd').oninput = e => {
     const r = +e.target.value;
-    d.fps = base * r;
-    if (HASVID) document.getElementById('vid').playbackRate = r;   // the video is the clock then
+    if (HASVID) {
+      // The clip carries the speed. Scaling d.fps as well would move the ruler the
+      // skeleton reads currentTime against — frameAtTime() divides by it — so the
+      // two drifted apart by exactly the speed factor.
+      document.getElementById('vid').playbackRate = r;
+    } else {
+      d.fps = base * r;                 // no video: the skeleton's own clock is the speed
+    }
   };
 });
 document.getElementById('play').onclick = e => {
