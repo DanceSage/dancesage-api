@@ -213,12 +213,18 @@ def body_file(track_id: int, name: str, t: str = "", u: User | None = Depends(op
         raise HTTPException(404, "No such file")
     t = tr
     st = get_storage()
-    if isinstance(st, LocalStorage):
+    media = {"json": "application/json", "bin": "application/octet-stream", "mp4": "video/mp4"}[name.rsplit(".", 1)[1]]
+    # The viewer reads these with fetch(), and a redirect sends the browser to R2,
+    # which answers without CORS headers — so the read is blocked and the page hangs
+    # on "Loading the bodies…". Small files are served from here instead: a track's
+    # joints are a few hundred kilobytes, and the browser never leaves the origin it
+    # is signed in to. Video and mesh stay redirects; they are large and are loaded
+    # by elements that do not mind.
+    if isinstance(st, LocalStorage) or name.endswith(".json"):
         try:
             data = st.body_bytes(t.id, name)
         except FileNotFoundError:
             raise HTTPException(404, "No such file")
-        media = {"json": "application/json", "bin": "application/octet-stream", "mp4": "video/mp4"}[name.rsplit(".", 1)[1]]
         return Response(data, media_type=media, headers={"Cache-Control": "private, no-store"})
     return RedirectResponse(st.body_url(t.id, name), status_code=307,
                             headers={"Cache-Control": "private, no-store"})
