@@ -6,7 +6,7 @@ window.mountBody3D = async function (root, files, opts = {}) {
   root.innerHTML = `
     <canvas class="b3-stage"></canvas>
     <div class="b3-status">Loading the bodies…</div>
-    <div class="b3-views"${opts.clock ? ' style="bottom:14px"' : ''}><button data-yaw="0">Front</button><button data-yaw="90">Side</button><button data-yaw="180">Back</button><button data-yaw="270">Other side</button><button class="b3-mode" title="Skeleton or body">Body</button></div>
+    <div class="b3-views"><button data-yaw="0">Front</button><button data-yaw="90">Side</button><button data-yaw="180">Back</button><button data-yaw="270">Other side</button><button class="b3-mode" title="Skeleton or body">Body</button></div>
     <div class="b3-bar">
       <button class="b3-play" title="Pause">&#10074;&#10074;</button>
       <input class="b3-scrub" type="range" min="0" max="1" step="1" value="0">
