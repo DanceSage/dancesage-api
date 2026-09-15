@@ -353,7 +353,8 @@ def video(video_id: int, request: Request, me: User | None = Depends(optional_us
     # else sees only a finished one.
     _seen = ["done", "failed"] if (me and me.id == v.user_id) else ["done"]
     done3d = next((t for t in db.execute(select(BodyTrack).where(BodyTrack.video_id == v.id,
-                                                                BodyTrack.status.in_(_seen))
+                                                                BodyTrack.status.in_(_seen),
+                                                                BodyTrack.frames > 0)
                                          .order_by(BodyTrack.created_at.desc())).scalars().all()), None)
     return templates.TemplateResponse(request, "video.html",
                                       {"v": v, "u": v.user, "more": more,

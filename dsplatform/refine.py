@@ -167,7 +167,12 @@ def get_body(video_id: int, tier: str = "", u: User | None = Depends(optional_us
         raise HTTPException(404, "No such video")
     _reap_abandoned(db)
     statuses = ["done", "failed"] if _owns(v, u) else ["done"]
-    q = select(BodyTrack).where(BodyTrack.video_id == v.id, BodyTrack.status.in_(statuses))
+    # frames > 0 means a worker actually delivered something. A job that was
+    # cancelled, or whose pod went away mid-fit, leaves a newer row with no files
+    # at all — and picking the newest row regardless hid a perfectly good body
+    # behind an empty one.
+    q = select(BodyTrack).where(BodyTrack.video_id == v.id, BodyTrack.status.in_(statuses),
+                                BodyTrack.frames > 0)
     if tier:
         q = q.where(BodyTrack.tier == tier)
     rows = db.execute(q.order_by(BodyTrack.created_at.desc())).scalars().all()
