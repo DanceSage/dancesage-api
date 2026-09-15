@@ -6,7 +6,7 @@ window.mountBody3D = async function (root, files, opts = {}) {
   root.innerHTML = `
     <canvas class="b3-stage"></canvas>
     <div class="b3-status">Loading the bodies…</div>
-    <div class="b3-views"><button data-yaw="0">Front</button><button data-yaw="90">Side</button><button data-yaw="180">Back</button><button data-yaw="270">Other side</button><button class="b3-mode" title="Skeleton or body">Body</button></div>
+    <div class="b3-views"${opts.clock ? ' style="bottom:14px"' : ''}><button data-yaw="0">Front</button><button data-yaw="90">Side</button><button data-yaw="180">Back</button><button data-yaw="270">Other side</button><button class="b3-mode" title="Skeleton or body">Body</button></div>
     <div class="b3-bar">
       <button class="b3-play" title="Pause">&#10074;&#10074;</button>
       <input class="b3-scrub" type="range" min="0" max="1" step="1" value="0">
@@ -129,7 +129,10 @@ window.mountBody3D = async function (root, files, opts = {}) {
   // Embedded in the video page, the clip is the clock. Two players in one box —
   // one of them looping on its own animation loop while the video stopped — was
   // never going to look like anything but a bug.
-  if (opts.clock) $('.b3-bar').hidden = true;
+  // style.display, not .hidden: the video page styles "#body3d .b3-bar" with
+  // display:flex, and an author rule beats the browser's own [hidden] rule — so
+  // the bar stayed on screen and the page carried two sets of transport controls.
+  if (opts.clock) { const b = $('.b3-bar'); b.hidden = true; b.style.display = 'none'; }
   if (!joints && !meshes.length) { fail('Nothing to draw — ' + (jointsWhy || 'no joints and no mesh')); return; }
   $('.b3-status').hidden = true;
 
