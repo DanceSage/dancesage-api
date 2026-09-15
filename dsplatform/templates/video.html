@@ -213,7 +213,11 @@ if (!HASVID) {
 if (HASVID) {
   const vid = document.getElementById('vid');
   const layers = { video: true, skel: true };
-  const chips = document.querySelectorAll('button.layer');
+  // Video and skeleton only. The 3D chip is also class="layer" but has no entry
+  // here, and classList.toggle(token, undefined) flips rather than forces — so it
+  // was switched on at load while the viewer stayed hidden, and flipped again on
+  // every other layer click. That is the two-clicks-to-open bug.
+  const chips = document.querySelectorAll('button.layer[data-layer="video"], button.layer[data-layer="skel"]');
   function apply() {
     vid.style.visibility  = layers.video ? 'visible' : 'hidden';
     sk.c.style.visibility = layers.skel ? 'visible' : 'hidden';
