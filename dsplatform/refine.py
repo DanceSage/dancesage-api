@@ -42,7 +42,13 @@ def _may_refine(u: User) -> bool:
     return u.plan == "pro" or (u.handle or "").lower() in PRO_HANDLES
 WORKER_TOKEN = os.environ.get("REFINE_WORKER_TOKEN", "")
 RUNPOD_KEY = os.environ.get("RUNPOD_API_KEY", "")
-RUNPOD_GPU = os.environ.get("RUNPOD_GPU", "NVIDIA A40")
+# Tried in order until one is actually available. RunPod answers SUPPLY_CONSTRAINT
+# when a card is listed but gone, which it often is — and a queue that stops because
+# one model of GPU is busy is a queue that stops for no reason. All of these carry
+# enough memory for a single-dancer fit; the A40 stays first because it is the
+# cheapest of them and the one every measurement was taken on.
+RUNPOD_GPUS = [g.strip() for g in os.environ.get(
+    "RUNPOD_GPU", "NVIDIA A40,NVIDIA RTX A6000,NVIDIA L40S,NVIDIA GeForce RTX 4090").split(",") if g.strip()]
 RUNPOD_VOLUME = os.environ.get("RUNPOD_VOLUME_ID", "")         # keeps the 24 GB of weights between pods
 # The bare base a pod used to bootstrap itself on, cloning the repo and building
 # the environment for the best part of twenty minutes, every time. Our own image
@@ -439,17 +445,24 @@ def _wake_worker(db: Session) -> None:
         if RUNPOD_REGISTRY_AUTH:
             extras += f', containerRegistryAuthId: "{RUNPOD_REGISTRY_AUTH}"'
         env_gql = ", ".join(f'{{key: {json.dumps(k)}, value: {json.dumps(v)}}}' for k, v in env.items())
-        def deploy(extra):
+        def deploy(extra, gpu):
             return _runpod('mutation { podFindAndDeployOnDemand(input: {gpuCount: 1, '
-                           f'gpuTypeId: "{RUNPOD_GPU}", name: "dancesage-refine-worker", imageName: "{RUNPOD_IMAGE}", '
+                           f'gpuTypeId: "{gpu}", name: "dancesage-refine-worker", imageName: "{RUNPOD_IMAGE}", '
                            f'containerDiskInGb: {disk}, volumeInGb: 0, minVcpuCount: 8, minMemoryInGb: 32, '
                            f'env: [{env_gql}]{extras}{extra}}}) {{ id }} }}')
         # With the weights volume when its data centre has a card; otherwise anywhere,
         # and the pod fetches the weights itself (ten minutes more).
-        r = deploy(f', networkVolumeId: "{RUNPOD_VOLUME}"') if RUNPOD_VOLUME else {"errors": True}
-        if not (r.get("data") or {}).get("podFindAndDeployOnDemand"):
-            r = deploy(", cloudType: SECURE")
-        ok = (r.get("data") or {}).get("podFindAndDeployOnDemand")
-        print(f"refine: worker pod {'started ' + ok['id'] if ok else 'NOT started: ' + str(r)[:300]}", flush=True)
+        ok, tried = None, []
+        for gpu in RUNPOD_GPUS:
+            r = deploy(f', networkVolumeId: "{RUNPOD_VOLUME}"', gpu) if RUNPOD_VOLUME else {"errors": True}
+            if not (r.get("data") or {}).get("podFindAndDeployOnDemand"):
+                r = deploy(", cloudType: SECURE", gpu)
+            ok = (r.get("data") or {}).get("podFindAndDeployOnDemand")
+            if ok:
+                print(f"refine: worker pod started {ok['id']} on {gpu}", flush=True)
+                break
+            tried.append(f"{gpu}: {str((r.get('errors') or [{}])[0].get('message', r))[:90]}")
+        if not ok:
+            print("refine: worker pod NOT started; " + " | ".join(tried), flush=True)
     except Exception as e:      # a queued job waits; the next request tries again
         print(f"refine: could not start worker: {e}", flush=True)
