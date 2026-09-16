@@ -120,7 +120,8 @@
       .refine button:disabled{opacity:.55;cursor:default}
     </style>
     <div class="refine" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
-      {% if not body.get('3d') or body['3d'].status == 'failed' %}<button class="grm" data-refine="3d" style="color:#EC48C8">Make it 3D{% if not can_refine %} · paid{% endif %}</button>{% endif %}
+      {% if not body.get('3d') or body['3d'].status == 'failed' %}<button class="grm" data-refine="3d" style="color:#EC48C8">Make it 3D{% if not can_refine %} · paid{% endif %}</button>
+      {% elif body['3d'].status == 'done' %}<button class="grm" data-refine="3d" style="color:var(--muted)" title="Fit this video again with the current pipeline">Make it 3D again</button>{% endif %}
       {% if body.get('3d') and body['3d'].status in ('queued', 'running') %}<button data-cancel="{{ body['3d'].id }}">Cancel</button>{% endif %}
       <span class="refine-msg" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
     </div>
