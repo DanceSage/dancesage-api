@@ -34,10 +34,19 @@ window.mountBody3D = async function (root, files, opts = {}) {
   // MHR70 (SAM 3D Body): 0 nose 1-2 eyes 3-4 ears 5-6 shoulders 7-8 elbows 9-10 hips 11-12 knees 13-14 ankles
   // 15-17 left toes/heel 18-20 right, 21-40 right hand (41 = right wrist), 42-61 left hand (62 = left wrist), 69 neck
   const BONES = {
-    mhr70: [[13,11],[11,9],[14,12],[12,10],[9,10],[5,9],[6,10],[5,6],[5,7],[6,8],[7,62],[8,41],[0,69],[5,69],[6,69],
-            [13,15],[13,16],[13,17],[14,18],[14,19],[14,20],
-            [62,45],[45,44],[44,43],[43,42],[62,49],[49,48],[48,47],[47,46],[62,53],[53,52],[52,51],[51,50],[62,57],[57,56],[56,55],[55,54],[62,61],[61,60],[60,59],[59,58],
-            [41,24],[24,23],[23,22],[22,21],[41,28],[28,27],[27,26],[26,25],[41,32],[32,31],[31,30],[30,29],[41,36],[36,35],[35,34],[34,33],[41,40],[40,39],[39,38],[38,37]],
+    // MHR70 drawn as a dancer: spine and limbs heavy, one line per finger, feet as
+    // blades. The R&D viewer's list, because it is the one that reads as a body.
+    // Two differences, both of which were making this look worse: the toes were
+    // three loose spikes off the ankle and are now closed into a triangle, so a
+    // foot is a foot; and each finger was drawn as its full four-segment chain,
+    // twenty segments a hand, which at any visible thickness is a club rather
+    // than a hand. One line per finger says the same thing and says it cleanly.
+    // 9/10 hips, 11/12 knees, 13/14 ankles, 5/6 shoulders, 7/8 elbows, 62/41 wrists, 69 neck, 0 nose.
+    mhr70: [[9,10],[9,5],[10,6],[5,6],[5,69],[6,69],[69,0],[13,11],[11,9],[14,12],[12,10],[5,7],[7,62],[6,8],[8,41],
+            [13,15],[13,16],[13,17],[15,16],[17,15],[17,16],
+            [14,18],[14,19],[14,20],[18,19],[20,18],[20,19],
+            [62,45],[45,43],[62,49],[49,47],[62,53],[53,51],[62,57],[57,55],[62,61],[61,59],
+            [41,24],[24,22],[41,28],[28,26],[41,32],[32,30],[41,36],[36,34],[41,40],[40,38]],
     smplx: [[0,1],[0,2],[1,4],[2,5],[4,7],[5,8],[7,10],[8,11],[0,3],[3,6],[6,9],[9,12],[12,15],[9,13],[9,14],[13,16],[14,17],[16,18],[17,19],[18,20],[19,21]]
   };
 
