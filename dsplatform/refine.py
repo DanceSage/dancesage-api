@@ -427,7 +427,9 @@ def _wake_worker(db: Session) -> None:
         own_image = RUNPOD_IMAGE != BARE_BASE
         env = {"PLATFORM_BASE": PLATFORM_BASE, "REFINE_WORKER_TOKEN": os.environ.get("REFINE_WORKER_TOKEN", ""),
                "HF_TOKEN": os.environ.get("HF_TOKEN", ""), "RUNPOD_API_KEY": RUNPOD_KEY,
-               "IDLE_MINUTES": os.environ.get("REFINE_IDLE_MINUTES", "10")}
+               "IDLE_MINUTES": os.environ.get("REFINE_IDLE_MINUTES", "10"),
+               # Overrides the post's own dancer count while that is still trusted.
+               "FORCE_ENGINE": os.environ.get("REFINE_FORCE_ENGINE", "")}
         extras = ""
         if own_image:
             # Everything the bootstrap used to install is baked in, and the image's
