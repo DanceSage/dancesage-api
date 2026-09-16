@@ -27,6 +27,10 @@ window.mountBody3D = async function (root, files, opts = {}) {
   let yaw = 0, pitch = 0.1, zoom = 1, meshes = [], c = null, jointsWhy = '';
   // The skeleton: the joints file alone, lines and dots, no surface. What the score uses.
   let skeleton = true, joints = null, bones = null, sk = [];
+  // Which dancers are lit. A couple is the reason the 3D lane exists, and the
+  // first thing anybody asks of a couple fit is to see one of them without the
+  // other in the way. Empty until the fit says how many there are.
+  let on = [];
   // MHR70 (SAM 3D Body): 0 nose 1-2 eyes 3-4 ears 5-6 shoulders 7-8 elbows 9-10 hips 11-12 knees 13-14 ankles
   // 15-17 left toes/heel 18-20 right, 21-40 right hand (41 = right wrist), 42-61 left hand (62 = left wrist), 69 neck
   const BONES = {
@@ -87,6 +91,31 @@ window.mountBody3D = async function (root, files, opts = {}) {
       const limbs = bones.map(() => { const hand = b => (b >= 21 && b <= 61 && b !== 41); const l = new THREE.Mesh(new THREE.CylinderGeometry(hand(bones[sk.length] ? 0 : 0) ? 0.005 : 0.011, 0.011, 1, 8), mat); grp.add(l); return l; });
       sk.push({ grp, dots, limbs });
     }
+    // Only for a couple. One dancer needs no chooser, and an empty one would sit
+    // on every styling clip in the app.
+    // Two dancers, two toggles, both lit. There is no "Both" button because both
+    // is the resting state, and a chooser whose first option is "leave it alone"
+    // is a button that exists to be ignored.
+    if (sk.length > 1) {
+      on = sk.map(() => true);
+      const views = $('.b3-views'), mode = $('.b3-mode');
+      sk.forEach((_, p) => {
+        const b = document.createElement('button');
+        b.textContent = 'Dancer ' + (p + 1);
+        b.style.color = ['#30E8DC', '#EC48C8'][p % 2];
+        b.style.borderColor = 'currentColor';
+        b.onclick = () => {
+          // Never all off: an empty stage reads as a broken viewer, not a choice,
+          // so the last one lit refuses to go out.
+          if (on[p] && on.filter(Boolean).length === 1) return;
+          on[p] = !on[p];
+          b.style.opacity = on[p] ? '1' : '.35';
+          b.style.borderColor = on[p] ? 'currentColor' : 'transparent';
+          if (joints) setSkeleton();
+        };
+        views.insertBefore(b, mode);
+      });
+    }
   } catch (e) { joints = null; skeleton = false; jointsWhy = e.message; }
 
   // The mesh brought its own bounds; a skeleton-only track is measured here, in
@@ -140,7 +169,7 @@ window.mountBody3D = async function (root, files, opts = {}) {
     const [cx, cy, cz] = c.centre, up = new THREE.Vector3(0, 1, 0);
     for (let p = 0; p < sk.length; p++) {
       const f = joints.people[p][frame], s = sk[p];
-      s.grp.visible = skeleton && !!(f && f.length);
+      s.grp.visible = skeleton && !!(f && f.length) && (on[p] !== false);
       if (!s.grp.visible) continue;
       // joints are in the camera frame (y down, z away); the meshes were flipped to y up, so flip the same way
       const P = j => new THREE.Vector3(f[j][0] - cx, -f[j][1] - cy, -f[j][2] - cz);
