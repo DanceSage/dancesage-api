@@ -86,9 +86,24 @@ window.mountBody3D = async function (root, files, opts = {}) {
     for (let p = 0; p < joints.people.length; p++) {
       const grp = new THREE.Group(); rig.add(grp);
       const mat = new THREE.MeshStandardMaterial({ color: COLOURS[p % 2], roughness: 0.5 });
+      // Sized like a body, which is the R&D viewer's sizing and the reason its
+      // skeleton reads as a person: the head is a head. Here every joint but a
+      // finger was one 22 mm bead, so joint 0 — the head — came out the size of a
+      // knee and the figure looked pinned rather than alive.
+      const finger = j => (j >= 21 && j <= 61 && j !== 41);
+      const foot = j => (j >= 15 && j <= 20);
+      const size = j => finger(j) ? 0.007 : foot(j) ? 0.014 : (j === 0 ? 0.088 : j === 69 ? 0.032 : 0.024);
       const dots = bones.flat().filter((v, i, a) => a.indexOf(v) === i).map(j => {
-        const d = new THREE.Mesh(new THREE.SphereGeometry(j >= 21 && j <= 61 && j !== 41 ? 0.008 : 0.022, 10, 8), mat); d.userData.j = j; grp.add(d); return d; });
-      const limbs = bones.map(() => { const hand = b => (b >= 21 && b <= 61 && b !== 41); const l = new THREE.Mesh(new THREE.CylinderGeometry(hand(bones[sk.length] ? 0 : 0) ? 0.005 : 0.011, 0.011, 1, 8), mat); grp.add(l); return l; });
+        const d = new THREE.Mesh(new THREE.SphereGeometry(size(j), 12, 10), mat); d.userData.j = j; grp.add(d); return d; });
+      // Per bone, from the joints it actually joins. What was here asked
+      // hand(bones[sk.length] ? 0 : 0), which is hand(0) whatever the bone is —
+      // always false — so every finger was drawn as thick as a thigh, and the two
+      // ends of each cylinder disagreed about their radius.
+      const limbs = bones.map(b => {
+        const r = (finger(b[0]) || finger(b[1])) ? 0.006
+                : (foot(b[0]) || foot(b[1])) ? 0.011
+                : (b.includes(69) || b.includes(0)) ? 0.026 : 0.016;
+        const l = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1, 10), mat); grp.add(l); return l; });
       sk.push({ grp, dots, limbs });
     }
     // Only for a couple. One dancer needs no chooser, and an empty one would sit
