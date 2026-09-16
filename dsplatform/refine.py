@@ -298,8 +298,25 @@ def next_job(worker: str = "", _: str = Depends(_worker), db: Session = Depends(
         video_url = f"{PLATFORM_BASE}/video/{v.video_key}.mov?t={_playback_token(v.video_key, expires)}"
     else:
         video_url = st.video_url(v.video_key)
+    # The phone's own 2D track travels with the job. It separated these dancers
+    # live, while filming, and on the GPU we were throwing that away and detecting
+    # them again from the compressed video — which in a close hold can fail to find
+    # a frame holding both, and did: a couple came back as a solo. A hint, not a
+    # requirement; a post made from the web has none and the detector still runs.
+    pose2d_url = ""
+    if v.pose2d_key:
+        try:
+            u2 = st.pose_url(v.pose2d_key)
+            # Only an address the worker can actually reach. In the cloud this is a
+            # signed URL and works; on local storage it is a relative path behind
+            # the same permission check a browser passes and a GPU does not, and
+            # handing that over would buy a failed download and a misleading log
+            # line rather than a track.
+            pose2d_url = u2 if u2.startswith(("http://", "https://")) else ""
+        except Exception as e:
+            print(f"refine: no 2D track url for {v.pose2d_key}: {e}", flush=True)
     return {"job": {"id": t.id, "video_id": v.id, "tier": t.tier, "dancers": v.dancers,
-                    "video_url": video_url, "title": v.title},
+                    "video_url": video_url, "pose2d_url": pose2d_url, "title": v.title},
             "queued": db.execute(select(BodyTrack).where(BodyTrack.status == "queued")).scalars().all().__len__()}
 
 
