@@ -120,8 +120,14 @@ window.mountBody3D = async function (root, files, opts = {}) {
     // Two dancers, two toggles, both lit. There is no "Both" button because both
     // is the resting state, and a chooser whose first option is "leave it alone"
     // is a button that exists to be ignored.
-    if (sk.length > 1) {
-      on = sk.map(() => true);
+    //
+    // Skipped when the page already has a dancer chooser of its own. The video
+    // page has one for the 2D skeleton, and drawing a second pair inside the
+    // canvas gave a reader two identical controls a few centimetres apart, only
+    // one of which reached the thing they were looking at. One control, whatever
+    // layer is on top: the page keeps its own and drives this through setHidden.
+    on = sk.map(() => true);
+    if (sk.length > 1 && opts.chips !== false) {
       const views = $('.b3-views'), mode = $('.b3-mode');
       sk.forEach((_, p) => {
         const b = document.createElement('button');
@@ -260,5 +266,18 @@ window.mountBody3D = async function (root, files, opts = {}) {
   cv.addEventListener('wheel', e => { e.preventDefault(); zoom = Math.max(0.4, Math.min(3, zoom * (e.deltaY < 0 ? 1.08 : 0.93))); }, { passive: false });
   cv.addEventListener('dblclick', () => { yaw = 0; pitch = 0.1; zoom = 1; });
   requestAnimationFrame(tick);
-  return { pause: () => { playing = false; }, play: () => { playing = true; } };
+  return {
+    pause: () => { playing = false; },
+    play: () => { playing = true; },
+    // Which dancers to draw, driven from outside: a Set of the ones to hide, in
+    // the same numbering the page's own chips use. Hiding everybody is ignored —
+    // an empty stage reads as a broken viewer rather than a choice.
+    setHidden: (hidden) => {
+      if (!sk.length) return;
+      const next = sk.map((_, p) => !hidden.has(p));
+      if (!next.some(Boolean)) return;
+      on = next;
+      if (joints) setSkeleton();
+    },
+  };
 };

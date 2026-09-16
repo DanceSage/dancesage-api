@@ -208,6 +208,11 @@ if (!HASVID) {
     const d = +b.dataset.dancer;
     sk.hidden.has(d) ? sk.hidden.delete(d) : sk.hidden.add(d);
     paint(); sk.draw();
+    // The same choice, applied to the 3D body if it is mounted. These chips used
+    // to move only the 2D skeleton while the 3D viewer drew its own identical
+    // pair inside the canvas, so the page offered two controls for one decision
+    // and the outer one did nothing to the layer in front of you.
+    if (window.body3dViewer) window.body3dViewer.setHidden(sk.hidden);
   });
   paint();
 }
@@ -271,9 +276,14 @@ if (HASVID) {
     // The video keeps running underneath, hidden: it is the clock the skeleton
     // follows, so the page's own controls drive both and they stop together.
     if (on && typeof sk !== 'undefined' && sk.pause) sk.pause();
-    if (on && !viewer) viewer = await mountBody3D(box, {{ body_files|tojson }},
-      { clock: () => (vid ? vid.currentTime : 0) }).catch(e => {
-        box.textContent = 'Could not show this body — ' + (e && e.message ? e.message : e); return null; });
+    if (on && !viewer) {
+      // chips: false — the page's own dancer buttons above drive this instead.
+      viewer = await mountBody3D(box, {{ body_files|tojson }},
+        { clock: () => (vid ? vid.currentTime : 0), chips: false }).catch(e => {
+          box.textContent = 'Could not show this body — ' + (e && e.message ? e.message : e); return null; });
+      // Mounted late, so it starts with whatever was already chosen above.
+      if (viewer) { window.body3dViewer = viewer; if (typeof sk !== 'undefined') viewer.setHidden(sk.hidden); }
+    }
   };
 })();
 </script>{% endif %}
