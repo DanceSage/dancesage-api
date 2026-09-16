@@ -180,8 +180,28 @@ def _nav_user(request: Request) -> dict:
         db.close()
 
 
+def _asset_v(name: str) -> str:
+    """A cache-busting stamp for a static file, taken from the file itself.
+
+    The scripts were included as body3d.js?v=10, a number kept by hand, and nobody
+    ever remembered it. Browsers cache by URL, so the 3D viewer could be rebuilt,
+    deployed and verified live on the server while every open page kept running
+    the version it fetched hours ago — which is exactly how an afternoon went:
+    the fix shipped, the site served it, and the page still drew the old body.
+    Content decides the URL now, so a changed file is a new URL and a file that
+    has not changed keeps its cache.
+    """
+    import hashlib
+    f = HERE / "static" / name
+    try:
+        return hashlib.md5(f.read_bytes()).hexdigest()[:8]
+    except OSError:
+        return "0"
+
+
 templates = Jinja2Templates(directory=str(HERE / "templates"),
                             context_processors=[_nav_user])
+templates.env.globals["asset_v"] = _asset_v
 Base.metadata.create_all(engine)
 from .refine import router as refine_router, body_summary, _files as _body_files, _may_refine   # noqa: E402  (needs the app's helpers)
 app.include_router(refine_router)
