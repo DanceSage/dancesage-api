@@ -353,7 +353,7 @@ def worker_log(payload: dict, _: str = Depends(_worker)):
     it says so, where we are already looking.
     """
     who = str(payload.get("worker") or "?")[:40]
-    print(f"refine-worker[{who}]: {str(payload.get('msg') or '')[:800]}", flush=True)
+    print(f"refine-worker[{who}]: {str(payload.get('msg') or '')[:2000]}", flush=True)
     return {"ok": True}
 
 
