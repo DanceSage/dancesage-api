@@ -11,23 +11,51 @@
      they agree on the palette and the type. If the site's palette changes, change
      it here in the same commit. */
   :root{
-    --bg:#080b0d; --bg-soft:#10161a;
-    --panel:rgba(255,255,255,0.07); --panel-strong:rgba(255,255,255,0.11);
-    --line:rgba(255,255,255,0.13);
-    --text:rgba(255,255,255,0.93); --muted:rgba(255,255,255,0.68);
-    --faint:rgba(255,255,255,0.48);
-    --gold:#f5d06f; --accent-2:#49c2b1;
+    --bg:#fff8e8; --bg-soft:#fffcf7;
+    --panel:rgba(43,29,24,0.045); --panel-strong:rgba(43,29,24,0.075);
+    --line:rgba(43,29,24,0.15);
+    --text:#2b1d18; --muted:rgba(43,29,24,0.68);
+    --faint:rgba(43,29,24,0.45);
+    /* The same four the site wears: green, blue, red, yellow. Each needs two
+       values, because a yellow bright enough to be joyful as a shape is
+       invisible as text on cream until it is taken down to ochre. */
+    --amarillo:#ffc400; --amarillo-ink:#8a6400;
+    --azul:#0b5fbf;     --azul-ink:#0b5fbf;
+    --rojo:#d62828;     --rojo-ink:#b81f1f;
+    --verde:#1f9d55;    --verde-ink:#157940;
+    /* --gold is what forty existing rules already say. It now means the ink,
+       so every one of them stays readable; --gold-fill is the bright one, for
+       the handful of places that paint a pill rather than a word. */
+    --gold:var(--amarillo-ink); --gold-fill:var(--amarillo);
+    --accent-2:var(--verde-ink);
     --font-display:"Fraunces",Georgia,"Times New Roman",serif;
     --font-body:"Outfit",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
     --max:1080px;
+    /* The stage, kept dark on purpose. */
+    --stage:#0f1114; --stage-text:rgba(255,255,255,0.93);
+    --stage-muted:rgba(255,255,255,0.62); --stage-border:rgba(255,255,255,0.14);
+    --stage-accent:#f5d06f; --stage-accent-2:#49c2b1;
     /* Skeleton colours stay as they are: they are content, not chrome, and they
        must match what the app draws. */
     --teal:#3ad6b0; --rose:#ff8fa3;
+    --panel2:rgba(43,29,24,0.03);
+  }
+  /* Anything that shows the dancer keeps the night, because the skeleton's gold
+     and turquoise glow on black and go muddy on cream. Re-declaring the tokens
+     on the container is enough: everything inside inherits the dark. */
+  .stage,#stage,#body3d,.b3-wrap,.player,.viewer{
+    --bg:var(--stage); --bg-soft:#14181b;
+    --text:var(--stage-text); --muted:var(--stage-muted);
+    --faint:rgba(255,255,255,0.45);
+    --line:var(--stage-border);
+    --panel:rgba(255,255,255,0.07); --panel-strong:rgba(255,255,255,0.11);
     --panel2:rgba(255,255,255,0.04);
+    --gold:var(--stage-accent); --gold-fill:var(--stage-accent);
+    background:var(--stage); color:var(--stage-text); color-scheme:dark;
   }
   *{box-sizing:border-box}
-  html{color-scheme:dark}
+  html{color-scheme:light}
   body{background:var(--bg);color:var(--text);margin:0;
     font:400 16px/1.6 var(--font-body)}
   a{color:inherit;text-decoration:none}
@@ -42,23 +70,23 @@
   .top nav{display:flex;gap:17px;font-size:.9rem;color:var(--muted);flex-wrap:wrap}
   .top nav a:hover{color:var(--text)}
   .top nav a.on{color:var(--gold)}
-  .top nav a.get{background:var(--gold);color:#241a06;font-weight:600;
+  .top nav a.get{background:var(--gold-fill);color:#241a06;font-weight:600;
     border-radius:999px;padding:6px 15px}
   .top nav a.avatar{width:30px;height:30px;border-radius:50%;overflow:hidden;
-    border:1px solid rgba(245,208,111,.55);display:grid;place-items:center;flex:none}
+    border:1px solid rgba(138,100,0,.45);display:grid;place-items:center;flex:none}
   .top nav a.avatar img{width:100%;height:100%;object-fit:cover;display:block}
   .top nav a.avatar span{color:var(--gold);font-weight:700;font-size:.82rem}
   .me-wrap{position:relative;display:inline-flex;align-items:center}
   .me-menu{position:absolute;top:calc(100% + 9px);right:0;min-width:170px;
-    background:#14181b;border:1px solid rgba(255,255,255,.14);border-radius:12px;
-    padding:6px;display:none;z-index:60;box-shadow:0 16px 40px rgba(0,0,0,.5)}
+    background:var(--bg-soft);border:1px solid var(--line);border-radius:12px;
+    padding:6px;display:none;z-index:60;box-shadow:0 16px 40px rgba(43,29,24,.16)}
   .me-menu.open{display:block}
   .me-menu .hd{padding:7px 11px 8px;font-size:.78rem;color:var(--faint);
-    border-bottom:1px solid rgba(255,255,255,.10);margin-bottom:5px;
+    border-bottom:1px solid var(--line);margin-bottom:5px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .me-menu a{display:block;padding:8px 11px;border-radius:8px;font-size:.88rem;
     color:var(--text)}
-  .me-menu a:hover{background:rgba(255,255,255,.07)}
+  .me-menu a:hover{background:var(--panel)}
   .me-menu a.out{color:var(--rose)}
 
   h1{font-family:var(--font-display);font-weight:600;font-size:2rem;
@@ -67,7 +95,7 @@
   .chip{display:inline-block;font-family:var(--mono);font-size:.7rem;letter-spacing:.06em;
     text-transform:uppercase;padding:3px 9px;border-radius:999px;
     border:1px solid var(--line);color:var(--muted);margin-right:6px}
-  .chip.on{background:var(--gold);border-color:var(--gold);color:#241a06;font-weight:600}
+  .chip.on{background:var(--gold-fill);border-color:var(--gold-fill);color:#241a06;font-weight:600}
   .who{display:flex;gap:22px;align-items:flex-start;margin-bottom:32px;flex-wrap:wrap}
   .who .av{width:104px;height:104px;border-radius:50%;object-fit:cover;flex:none;
     border:2px solid var(--line)}
@@ -83,7 +111,7 @@
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:16px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;
     overflow:hidden;transition:border-color .15s,transform .15s}
-  .card:hover{border-color:rgba(245,208,111,.4);transform:translateY(-2px)}
+  .card:hover{border-color:rgba(138,100,0,.45);transform:translateY(-2px)}
   .card canvas,.card img.still{width:100%;aspect-ratio:3/4;display:block;background:var(--panel2);object-fit:cover}
   .card .meta{padding:11px 13px 13px}
   .card .t{font-weight:600;font-size:.94rem;line-height:1.3}
@@ -107,7 +135,7 @@
   .mytabs a:hover{background:var(--panel-strong)}
   .mytabs .now{color:var(--gold);border-color:var(--line);background:var(--panel2);
     cursor:default}
-  .mytabs b{background:var(--gold);color:#241a06;border-radius:999px;
+  .mytabs b{background:var(--gold-fill);color:#241a06;border-radius:999px;
     font:700 .66rem var(--mono);padding:1px 6px}
   @media(max-width:520px){
     .mytabs{gap:7px}
@@ -133,7 +161,7 @@
         <a class="avatar" href="/me" id="meBtn" title="My profile" aria-label="My profile" style="position:relative">
           {% if me.avatar_key %}<img src="/avatar/{{ me.handle }}.jpg" alt="">
           {% else %}<span>{{ (me.display_name or me.handle or '?')[0]|upper }}</span>{% endif %}
-          {% if offer_count %}<b style="position:absolute;top:-4px;right:-6px;background:var(--gold);color:#241a06;border-radius:999px;font:700 .66rem var(--mono);padding:1px 6px;line-height:1.4">{{ offer_count }}</b>{% endif %}
+          {% if offer_count %}<b style="position:absolute;top:-4px;right:-6px;background:var(--gold-fill);color:#241a06;border-radius:999px;font:700 .66rem var(--mono);padding:1px 6px;line-height:1.4">{{ offer_count }}</b>{% endif %}
         </a>
         <div class="me-menu" id="meMenu">
           <div class="hd">@{{ me.handle }}</div>

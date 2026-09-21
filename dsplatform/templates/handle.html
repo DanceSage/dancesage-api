@@ -45,16 +45,16 @@
     padding:12px 14px;border-radius:10px;font-size:1rem}
   .wrap-in input{padding-left:30px;padding-right:38px;font-family:var(--mono)}
   #f input:focus{outline:2px solid var(--gold);outline-offset:1px}
-  .wrap-in.good input{border-color:#3ad6b0}
-  .wrap-in.bad  input{border-color:#ff8fa3}
+  .wrap-in.good input{border-color:var(--verde-ink)}
+  .wrap-in.bad  input{border-color:var(--rojo-ink)}
   .tick{position:absolute;right:13px;font-size:.95rem}
-  .wrap-in.good .tick::after{content:"\\2713";color:#3ad6b0}
-  .wrap-in.bad  .tick::after{content:"\\00d7";color:#ff8fa3}
+  .wrap-in.good .tick::after{content:"\\2713";color:var(--verde-ink)}
+  .wrap-in.bad  .tick::after{content:"\\00d7";color:var(--rojo-ink)}
   .note{font-size:.76rem;color:var(--faint)}
-  .note.good{color:#3ad6b0}
-  .note.bad{color:#ff8fa3}
-  .note.err{color:#ff8fa3;min-height:1.1em}
-  #go{background:var(--gold);border:none;color:#241a06;font:600 .95rem system-ui;
+  .note.good{color:var(--verde-ink)}
+  .note.bad{color:var(--rojo-ink)}
+  .note.err{color:var(--rojo-ink);min-height:1.1em}
+  #go{background:var(--gold-fill);border:none;color:#241a06;font:600 .95rem system-ui;
     padding:13px;border-radius:10px;cursor:pointer}
   #go[disabled]{opacity:.4;cursor:default}
 </style>

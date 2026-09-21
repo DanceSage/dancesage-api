@@ -3,12 +3,12 @@
 {% block body %}
 {% if can_share %}{% include '_vmenu_css.html' %}{% endif %}
 <style>
-  .player{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+  .player{background:var(--stage);border:1px solid var(--stage-border);border-radius:16px;padding:14px}
   /* The stage takes the video's own shape rather than the column's. A phone clip
      is portrait; stretching it to the full width of a desktop column made it
      tower over the page and upscaled it into mush. */
   #stage{position:relative;width:fit-content;max-width:100%;margin:0 auto;
-    border-radius:11px;overflow:hidden;background:var(--panel2)}
+    border-radius:11px;overflow:hidden;background:#0b0d10}
   #stage video{display:block;max-width:100%;max-height:72vh;width:auto;height:auto}
   /* Skeleton-only: no video to take the shape from, so keep it upright. */
   .player canvas{display:block;background:var(--panel2);border-radius:11px;cursor:grab}
@@ -67,8 +67,8 @@
   <div>
     <h1 style="font-size:1.35rem">{{ v.title }}</h1>
     <div style="color:var(--muted);font-size:.9rem;margin-bottom:12px">
-      <a href="/@{{ u.handle }}" style="color:var(--teal)">{{ u.display_name }}</a>'s attempt at
-      <a href="/v/{{ lesson.id }}" style="color:var(--teal)">{{ lesson.title }}</a> by {{ lesson.user.display_name }}</div>
+      <a href="/@{{ u.handle }}" style="color:var(--verde-ink)">{{ u.display_name }}</a>'s attempt at
+      <a href="/v/{{ lesson.id }}" style="color:var(--verde-ink)">{{ lesson.title }}</a> by {{ lesson.user.display_name }}</div>
     <p class="sub" style="font-size:.94rem">{{ v.note }}</p>
   </div>
 </div>
@@ -101,18 +101,18 @@
   <div>
     <h1 style="font-size:1.35rem">{{ v.title }}</h1>
     <div style="color:var(--muted);font-size:.9rem;margin-bottom:12px">
-      <a href="/@{{ u.handle }}" style="color:var(--teal)">{{ u.display_name }}</a>
+      <a href="/@{{ u.handle }}" style="color:var(--verde-ink)">{{ u.display_name }}</a>
       &middot; {{ u.city }}</div>
     <div style="margin-bottom:14px">
       <span class="chip">{{ v.style }}</span><span class="chip">{{ v.level }}</span>
       <span class="chip">{{ v.seconds }}s</span>
       {% if v.dancers > 1 %}<span class="chip">partner</span>{% endif %}
-      {% for tier, b in (body or {}).items() %}<span class="chip" data-body-tier="{{ tier }}" style="{% if b.status == 'done' %}color:#EC48C8{% elif b.status == 'failed' %}color:var(--rose){% else %}color:var(--gold){% endif %}">{{ {'refined': 'Refined', '3d': '3D'}.get(tier, tier) }}{% if b.status != 'done' %} · {{ {'queued': 'queued', 'running': 'refining…', 'failed': 'not accepted'}[b.status] }}{% endif %}</span>{% endfor %}
+      {% for tier, b in (body or {}).items() %}<span class="chip" data-body-tier="{{ tier }}" style="{% if b.status == 'done' %}color:#EC48C8{% elif b.status == 'failed' %}color:var(--rojo-ink){% else %}color:var(--gold){% endif %}">{{ {'refined': 'Refined', '3d': '3D'}.get(tier, tier) }}{% if b.status != 'done' %} · {{ {'queued': 'queued', 'running': 'refining…', 'failed': 'not accepted'}[b.status] }}{% endif %}</span>{% endfor %}
     </div>
     {% if is_owner and v.has_video and body is defined %}
     {# Refine: a body made after the fact. Refined is free while it costs cents; 3D is the paid plan. #}
     <style>
-      .refine button{background:var(--card,#1A1E24);border:1px solid var(--line);color:var(--text);
+      .refine button{background:var(--panel);border:1px solid var(--line);color:var(--text);
         font:600 .82rem var(--font-body);padding:8px 16px;border-radius:999px;cursor:pointer;
         display:inline-flex;align-items:center;gap:7px;transition:border-color .15s,transform .05s}
       .refine button:hover:not(:disabled){border-color:#EC48C8}
