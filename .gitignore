@@ -15,3 +15,6 @@ dancesage.db
 # Ultralytics weights are AGPL and nothing here uses them.
 yolov8*.pt
 yolo11*.pt
+
+# macOS writes these into every directory it looks at.
+.DS_Store
